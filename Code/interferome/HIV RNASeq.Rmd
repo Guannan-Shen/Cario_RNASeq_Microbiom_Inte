@@ -1,0 +1,187 @@
+---
+title: "HIV RNASeq"
+author: "Guannan Shen"
+date: "November 21, 2018"
+output: 
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/CIDA_OMICs/7659Stats_Genetics/HW5/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+```{r libs}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(edgeR)
+library(EDASeq)
+library(DESeq2)
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(stats)
+library("BiocParallel")
+
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+
+```
+
+# HIV patients, health control RNASeq data Normalization and QC (quality control)
+Start with the counts table, and compare different normalization methods. DESeq2, TPM...
+
+DESeq2 is inter-sample comparison normalization method, assuming the majority of the genes are not differentially expressed. 
+
+The top commonly used methods are DESeq (median-of-ratios) and TMM (Trimmed Mean of M values)-edgeR. DESeq and TMM-edgeR were reported to have overall better performance, based on the false positive rate and detection power. 
+
+
+```{r eda_qc}
+# import unnormalized counts table
+cnts.raw <- read.delim("All_Sample_geneCounts_raw_counts.txt", header = TRUE, sep = "\t")
+head(cnts.raw)
+ncol(cnts.raw)
+
+## explore the gene Symbol "unique"
+anyNA(cnts.raw$Symbol)
+length(unique(cnts.raw$Symbol)) == nrow(cnts.raw) # there is duplication
+gene_sym_sum <- table(cnts.raw$Symbol)
+typeof(gene_sym_sum)
+sum(gene_sym_sum[gene_sym_sum >= 2]) #  1035 >= 2 symbols
+range(gene_sym_sum) # Y_RNA has been used for 490 times
+
+# check unique Gene_ID
+length(unique(cnts.raw$Gene_ID)) == nrow(cnts.raw) # Gene_ID is unique
+
+# generate the common counts table
+cnts <- cnts.raw %>% dplyr::select(-c(Symbol, Length ) ) %>% tibble::column_to_rownames("Gene_ID")
+head(cnts)
+dim(cnts)
+rna.pid <- colnames(cnts)
+# now we have the common counts table 
+## pheno
+ctrl.id <-  colnames(cnts)[1:13]
+hiv.id <- colnames(cnts)[14:32]
+## from dim() we know there are 32 samples
+pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 13), 
+                                                     rep("HIV", 19)
+                                                     )) )
+pheno$txt %<>% relevel("Control")
+## This is an important step so that DESeq will know to treat the control group as the reference
+
+
+## without filering
+# using the function from EDASeq
+# using group here 
+set <- newSeqExpressionSet(as.matrix(round(cnts)),phenoData = data.frame(group=as.factor(pheno$txt), row.names=colnames(cnts)))
+##  general QC images  ## 
+## plotRLE from EDASeq
+plotRLE(set, 
+        outline = FALSE, col=c(rep("Orange", 13), rep("Green", 19)), 
+        main = "Control vs. HIV RLE Plot", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+## PCA plot to show clustering
+### plotPCA from EDASeq package
+
+plotPCA(set, col= c(rep("Orange", 13), rep("Green", 19)) )
+
+
+##filter the raw data and check dim
+cnts_f <- cnts[rowSums(cnts)>=(5*ncol(cnts)), ]
+## should end up around 15 - 20K genes 
+ngenes <- nrow(cnts_f)
+paste("The number of remaining genes: ", ngenes, sep = '')
+# all integer in cnts_f
+typeof( as.matrix(cnts_f) )
+
+# using the function from EDASeq
+set <- newSeqExpressionSet(as.matrix(round(cnts_f)),phenoData = data.frame(group=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+##  general QC images  ## 
+## plotRLE from EDASeq
+plotRLE(set, 
+        outline = FALSE, col=c(rep("Orange", 13), rep("Green", 19)), 
+        main = "Control vs. HIV RLE Plot", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+## PCA plot to show clustering
+### plotPCA from EDASeq package
+
+plotPCA(set, col= c(rep("Orange", 13), rep("Green", 19)) )
+
+
+
+
+```
+
+
+```{r deseq}
+# counts from EDASeq (DESeq2)
+# pData is phenoData from Biobase
+countData <- counts(set) #Matrix with transcripts IDs as rows and sample IDs as columns
+colData <- pData(set) #Vector of type list in which the group column is the treat/control identfier, and the rownames are sample IDs
+
+#Run DESeq function using above objects
+print("this is a single factor: group, and 2 groups design (2 levels)")
+
+## now using deseq2
+dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ group)
+
+## deseq normalization and DE analysis
+register(MulticoreParam(6))
+dds <- DESeq(dds)
+plotMA(dds)
+
+res <- results(dds)
+summary(res)
+## res is the result 
+resOrdered <- res[order(res$pvalue),]
+head(resOrdered, 10)
+
+##
+sum(res$padj < 0.1, na.rm=TRUE)
+# plots 
+plotMA(res)
+
+```
+
+# Reference
+1. A comparison of per sample global scaling and per gene normalization methods for differential expression analysis of RNA-seq data, PLos One. 2017. 
+
+
+
