@@ -49,7 +49,7 @@ library(knitr)
 library(tidyverse)
 library(magrittr)
 library(stats)
-library("BiocParallel")
+library(BiocParallel)
 
 options(stringsAsFactors = F)
 options(dplyr.width = Inf)
@@ -60,6 +60,8 @@ getwd()
 # ######## clean memory ######################
 # rm(list = ls())
 # gc()
+# is(dds)
+# slotNames(dds)
 
 ```
 
@@ -78,6 +80,7 @@ head(cnts.raw)
 ncol(cnts.raw)
 
 ## explore the gene Symbol "unique"
+print("raw data: Symbol")
 anyNA(cnts.raw$Symbol)
 length(unique(cnts.raw$Symbol)) == nrow(cnts.raw) # there is duplication
 gene_sym_sum <- table(cnts.raw$Symbol)
@@ -86,29 +89,34 @@ sum(gene_sym_sum[gene_sym_sum >= 2]) #  1035 >= 2 symbols
 range(gene_sym_sum) # Y_RNA has been used for 490 times
 
 # check unique Gene_ID
+print("Gene_ID is unique")
 length(unique(cnts.raw$Gene_ID)) == nrow(cnts.raw) # Gene_ID is unique
 
 # generate the common counts table
+print("I used Symbol for more information")
 cnts <- cnts.raw %>% dplyr::select(-c(Symbol, Length ) ) %>% tibble::column_to_rownames("Gene_ID")
+cnts <- as.matrix(cnts)
 head(cnts)
 dim(cnts)
 rna.pid <- colnames(cnts)
 # now we have the common counts table 
 ## pheno
 ctrl.id <-  colnames(cnts)[1:13]
+ctrl.id
 hiv.id <- colnames(cnts)[14:32]
+hiv.id
 ## from dim() we know there are 32 samples
 pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 13), 
                                                      rep("HIV", 19)
                                                      )) )
 pheno$txt %<>% relevel("Control")
-## This is an important step so that DESeq will know to treat the control group as the reference
+## This is an important step so that DESeq will know to treat the control condition as the reference
 
 
 ## without filering
 # using the function from EDASeq
-# using group here 
-set <- newSeqExpressionSet(as.matrix(round(cnts)),phenoData = data.frame(group=as.factor(pheno$txt), row.names=colnames(cnts)))
+# using condition here 
+set <- newSeqExpressionSet(as.matrix(round(cnts)),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts)))
 ##  general QC images  ## 
 ## plotRLE from EDASeq
 plotRLE(set, 
@@ -131,7 +139,7 @@ paste("The number of remaining genes: ", ngenes, sep = '')
 typeof( as.matrix(cnts_f) )
 
 # using the function from EDASeq
-set <- newSeqExpressionSet(as.matrix(round(cnts_f)),phenoData = data.frame(group=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+set <- newSeqExpressionSet(as.matrix(round(cnts_f)),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
 ##  general QC images  ## 
 ## plotRLE from EDASeq
 plotRLE(set, 
@@ -154,18 +162,19 @@ plotPCA(set, col= c(rep("Orange", 13), rep("Green", 19)) )
 # counts from EDASeq (DESeq2)
 # pData is phenoData from Biobase
 countData <- counts(set) #Matrix with transcripts IDs as rows and sample IDs as columns
-colData <- pData(set) #Vector of type list in which the group column is the treat/control identfier, and the rownames are sample IDs
+colData <- pData(set) #Vector of type list in which the condition column is the treat/control identfier, and the rownames are sample IDs
 
 #Run DESeq function using above objects
-print("this is a single factor: group, and 2 groups design (2 levels)")
+print("this is a single factor: condition, and 2 conditions design (2 levels)")
 
 ## now using deseq2
-dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ group)
+dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ condition)
+is(dds)
+slotNames(dds)
 
 ## deseq normalization and DE analysis
 register(MulticoreParam(6))
 dds <- DESeq(dds)
-plotMA(dds)
 
 res <- results(dds)
 summary(res)
