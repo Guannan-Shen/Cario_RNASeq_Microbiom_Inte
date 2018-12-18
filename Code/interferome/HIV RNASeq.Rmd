@@ -65,8 +65,8 @@ getwd()
 
 ```
 
-# HIV patients, health control RNASeq data Normalization and QC (quality control)
-Start with the counts table, and compare different normalization methods. DESeq2, TPM...
+# HIV patients untreated, health control RNASeq data Normalization and QC (quality control)
+Start with the counts table, and compare different normalization methods. DESeq2, TPM, TMM...
 
 DESeq2 is inter-sample comparison normalization method, assuming the majority of the genes are not differentially expressed. 
 
