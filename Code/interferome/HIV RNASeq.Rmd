@@ -50,7 +50,13 @@ library(tidyverse)
 library(magrittr)
 library(stats)
 library(BiocParallel)
-
+library(readxl)
+library(openxlsx)
+library(limma)
+library(scater)
+library(rgl)
+library(pca3d)
+library(EnhancedVolcano)
 options(stringsAsFactors = F)
 options(dplyr.width = Inf)
 getwd()
@@ -65,19 +71,25 @@ getwd()
 
 ```
 
-# HIV patients untreated, health control RNASeq data Normalization and QC (quality control)
+# Normalization
+## Background
+HIV patients untreated, health control RNASeq data Normalization and QC (quality control). 
+
 Start with the counts table, and compare different normalization methods. DESeq2, TPM, TMM...
 
 DESeq2 is inter-sample comparison normalization method, assuming the majority of the genes are not differentially expressed. 
 
 The top commonly used methods are DESeq (median-of-ratios) and TMM (Trimmed Mean of M values)-edgeR. DESeq and TMM-edgeR were reported to have overall better performance, based on the false positive rate and detection power. 
 
+## Filter Criteria and QC
 
 ```{r eda_qc}
 # import unnormalized counts table
 cnts.raw <- read.delim("All_Sample_geneCounts_raw_counts.txt", header = TRUE, sep = "\t")
+cnts.treated.raw <- read.xlsx("HIV-1_infected_HAART_treated_Raw_Counts.xlsx")
 head(cnts.raw)
 ncol(cnts.raw)
+head(cnts.treated.raw)
 
 ## explore the gene Symbol "unique"
 print("raw data: Symbol")
@@ -113,52 +125,77 @@ pheno$txt %<>% relevel("Control")
 ## This is an important step so that DESeq will know to treat the control condition as the reference
 
 
-## without filering
-# using the function from EDASeq
-# using condition here 
-set <- newSeqExpressionSet(as.matrix(round(cnts)),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts)))
-##  general QC images  ## 
-## plotRLE from EDASeq
-plotRLE(set, 
-        outline = FALSE, col=c(rep("Orange", 13), rep("Green", 19)), 
-        main = "Control vs. HIV RLE Plot", 
-        xlab = "Sample", 
-        ylab = "Relative Log Ratio")
-## PCA plot to show clustering
-### plotPCA from EDASeq package
+# ## without filering
+# # using the function from EDASeq
+# # using condition here 
+# set <- newSeqExpressionSet(as.matrix(round(cnts)),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts)))
+# ##  general QC images  ## 
+# 
+# ## plotRLE from EDASeq
+# plotRLE(set, 
+#         outline = FALSE, col=c(rep("Orange", 13), rep("Green", 19)), 
+#         main = "Control vs. HIV RLE Plot", 
+#         xlab = "Sample", 
+#         ylab = "Relative Log Ratio")
+# ## PCA plot to show clustering
+# ### plotPCA from EDASeq package
+# 
+# plotPCA(set, col= c(rep("Orange", 13), rep("Green", 19)) )
 
-plotPCA(set, col= c(rep("Orange", 13), rep("Green", 19)) )
-
-
+## add Symbol to the data  
+cnts <- as.data.frame(cnts)
+cnts$Symbol <- cnts.raw$Symbol
+cnts$Length <- cnts.raw$Length
+head(cnts)
 ##filter the raw data and check dim
-cnts_f <- cnts[rowSums(cnts)>=(5*ncol(cnts)), ]
+cnts_fsym <- cnts[rowSums(cnts[, 1:32])>=(5*ncol(cnts[, 1:32])), ]
 ## should end up around 15 - 20K genes 
-ngenes <- nrow(cnts_f)
+ngenes <- nrow(cnts_fsym)
 paste("The number of remaining genes: ", ngenes, sep = '')
 # all integer in cnts_f
+cnts_f <- as.matrix(cnts_fsym[, 1:32])
 typeof( as.matrix(cnts_f) )
 
 # using the function from EDASeq
-set <- newSeqExpressionSet(as.matrix(round(cnts_f)),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+set <- newSeqExpressionSet(as.matrix(cnts_f),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
 ##  general QC images  ## 
 ## plotRLE from EDASeq
-plotRLE(set, 
-        outline = FALSE, col=c(rep("Orange", 13), rep("Green", 19)), 
-        main = "Control vs. HIV RLE Plot", 
+## boxplots of the log-ratios of the gene-level read counts of each sample to those of a reference sample (defined as the median across the samples). 
+EDASeq::plotRLE(set, 
+        outline = FALSE, col=c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV RLE Plot (With Filtering Before Normalization)", 
         xlab = "Sample", 
         ylab = "Relative Log Ratio")
 ## PCA plot to show clustering
 ### plotPCA from EDASeq package
 
-plotPCA(set, col= c(rep("Orange", 13), rep("Green", 19)) )
+EDASeq::plotPCA(set, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering Before Normalization)")
+EDASeq::plotPCA(set, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering Before Normalization)", k = 3)
+
+## PCA of prcomp
+# pc <- princomp(cnts_f, cor=TRUE, scores=TRUE)
+# pc$scores
+cnts.f.pca <- prcomp(t(cnts_f), center = TRUE, scale. = TRUE, retx = TRUE)
+plot(cnts.f.pca)
+pca3d(cnts.f.pca, components = 1:3, col= c(rep("steelblue", 13), rep("tomato", 19)),
+      title = "Control vs. HIV PCA Plot (With Filtering Before Normalization)",
+      radius = 1.5, show.labels = TRUE)
+## boxplot 
+
+boxplot(log2(cnts_f), main = "Control vs. HIV Boxplot (With Filtering Before Normalization)",
+         xlab = "Sample", ylab = "log2 Counts")
 
 
 
 
 ```
 
+## Comparison of DESeq2, TMM and TPM Normalization Methods
 
-```{r deseq}
+```{r normmethods}
+################# deseq2 ###########################
 # counts from EDASeq (DESeq2)
 # pData is phenoData from Biobase
 countData <- counts(set) #Matrix with transcripts IDs as rows and sample IDs as columns
@@ -171,26 +208,711 @@ print("this is a single factor: condition, and 2 conditions design (2 levels)")
 dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ condition)
 is(dds)
 slotNames(dds)
+dds <- estimateSizeFactors(dds)
+## normalization factors
+sizeFactors(dds)
+cnts.deseq2 <- counts(dds, normalized=TRUE)
+head(cnts.deseq2)
 
+######## edgeR TMM ###############
+## edgeR object
+group <- c(rep(1, 13), rep(2, 19))
+y <- DGEList(counts= as.matrix(cnts_f), group=group)
+## normalization 
+y <- calcNormFactors(y, method = "TMM")
+y$samples
+cnts.edger <- edgeR::cpm(y)
+head(cnts.edger)
+
+########## TPM #########
+cnts.tpm <- calculateTPM(cnts_f, effective_length = cnts_fsym$Length)
+head(cnts.tpm)
+
+######### plots ##################
+########### cnts.deseq2
+# using the function from EDASeq
+# set <- newSeqExpressionSet(cnts.deseq2,phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+##  general QC images  ## 
+## plotRLE from EDASeq
+EDASeq::plotRLE(cnts.deseq2, 
+        outline = FALSE, col=c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV RLE Plot (With Filtering DESeq2 Normalization)", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+## PCA plot to show clustering
+### plotPCA from EDASeq package
+
+EDASeq::plotPCA(cnts.deseq2, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering DESeq2 Normalization)")
+EDASeq::plotPCA(cnts.deseq2, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering DESeq2 Normalization)", k = 3)
+
+cnts.deseq2.pca <- prcomp(t(cnts.deseq2), center = TRUE, scale. = TRUE, retx = TRUE)
+plot(cnts.deseq2.pca)
+pca3d(cnts.deseq2.pca, components = 1:3, col= c(rep("steelblue", 13), rep("tomato", 19)),
+      title = "Control vs. HIV PCA Plot (With Filtering DESeq2 Normalization)",
+      radius = 1.5, show.labels = TRUE)
+pca2d(cnts.deseq2.pca, components = 1:2, col= c(rep("steelblue", 13), rep("tomato", 19)),
+      title = "Control vs. HIV PCA Plot (With Filtering DESeq2 Normalization)",
+      radius = 1.5)
+
+## boxplot
+boxplot(log2(cnts.deseq2), main = "Control vs. HIV Boxplot (With Filtering DESeq2 Normalization)",
+         xlab = "Sample", ylab = "log2 Counts")
+
+########### TMM and edgeR
+## plotRLE from EDASeq
+EDASeq::plotRLE(cnts.edger, 
+        outline = FALSE, col=c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV RLE Plot (With Filtering TMM (edgeR) Normalization)", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+EDASeq::plotPCA(cnts.edger, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering TMM (edgeR) Normalization)")
+EDASeq::plotPCA(cnts.edger, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering TMM (edgeR) Normalization)", k = 3)
+
+cnts.edger.pca <- prcomp(t(cnts.edger), center = TRUE, scale. = TRUE, retx = TRUE)
+plot(cnts.edger.pca)
+pca3d(cnts.edger.pca, components = 1:3, col= c(rep("steelblue", 13), rep("tomato", 19)),
+      title = "Control vs. HIV PCA Plot (With Filtering TMM Normalization)",
+      radius = 1.5, show.labels = TRUE)
+pca2d(cnts.edger.pca, components = 1:2, col= c(rep("steelblue", 13), rep("tomato", 19)),
+      title = "Control vs. HIV PCA Plot (With Filtering TNN Normalization)",
+      radius = 1.5)
+
+boxplot(log2(cnts.edger), main = "Control vs. HIV Boxplot (With Filtering TMM (edgeR) Normalization)",
+         xlab = "Sample", ylab = "log2 Counts")
+
+########## TPM
+EDASeq::plotRLE(cnts.tpm, 
+        outline = FALSE, col=c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV RLE Plot (With Filtering TPM Normalization)", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+EDASeq::plotPCA(cnts.tpm, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering TPM Normalization)")
+EDASeq::plotPCA(cnts.tpm, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (With Filtering TPM Normalization)", k = 3 )
+boxplot(log2(cnts.tpm), main = "Control vs. HIV Boxplot (With Filtering TPM Normalization)",
+         xlab = "Sample", ylab = "log2 Counts")
+
+
+```
+
+Based on the RLE plots, Boxplots and PCA plots, DESeq2 and TMM of edgeR normalization methods are better. Based on the medians in the RLE plots, the DESeq normalization method was chosen. 
+# Differential Expression Analysis 
+
+## DESeq2 Method
+
+The standard differential expression analysis steps in DESeq2 were chosen. The adjusted p value cutoff was set as 0.1 or 0.05. The Benjamini–Hochberg procedure controling false discovery rate (FDR) was used to conduct the p-values adjustment. 
+
+```{r deseqDE}
 ## deseq normalization and DE analysis
 register(MulticoreParam(6))
 dds <- DESeq(dds)
 
+## the results
 res <- results(dds)
 summary(res)
+
+## add gene symbol information to the results
+res.sym <- res
+rownames(res.sym) <- cnts_fsym$Symbol
 ## res is the result 
-resOrdered <- res[order(res$pvalue),]
-head(resOrdered, 10)
+resOrdered <- res.sym[order(res.sym$pvalue),]
+head(resOrdered[,c(2,6)], 10)
 
-##
-sum(res$padj < 0.1, na.rm=TRUE)
+## cutoff 0.1 or 0.05
+res.deseq.1 <- resOrdered[resOrdered$padj <= 0.1,]
+dim(res.deseq.1)
+res.deseq.05 <- resOrdered[resOrdered$padj <= 0.05,]
+dim(res.deseq.05)
+# minimum padj
+res[which.min(res$padj),]
+res.sym[which.min(res.sym$padj),]
+
 # plots 
-plotMA(res)
+## shrinkage of log2 fc to visualize
+resultsNames(dds)
+resLFC <- lfcShrink(dds, coef="condition_HIV_vs_Control", type="apeglm")
+## MA plot
+plotMA(resLFC, ylim = c(-5,5))
+## plot counts of minimum padj
+plotCounts(dds, gene=which.min(res$padj), intgroup="condition",
+           main = "EOMES")
 
+## DE analysis of edger
+# y <- estimateDisp(y)
+# et <- exactTest(y)
+# topTags(et)
+
+```
+
+# Core gene lists
+
+## Core ISGs
+Genes that were induced by all the type I interferons tested in vitro.
+
+## ‘IFN-beta specific genes’
+
+Genes that were induced specifically by IFN-beta, but not the IFN-alpha subtypes tested
+
+```{r genelists}
+# the list of DE genes 
+########## by symbol #####
+## 4730 out of 19890
+sym.deseq.1 <- rownames(res.deseq.1)
+## 6585 out of 19890
+sym.deseq.05 <- rownames(res.deseq.05)
+###### by gene_id
+res.order.geneid <- res[order(res$pvalue),]
+gid.deseq.1 <- rownames(res.order.geneid[res.order.geneid$padj <= 0.1,])
+gid.deseq.05 <- rownames(res.order.geneid[res.order.geneid$padj <= 0.05,])
+### summary of results
+res.deseq.sum1 <- data.frame(Gene_ID = rownames(res.order.geneid), 
+                             Symbol = rownames(resOrdered),
+                             Log2FoldChange = resOrdered[,2],
+                             pvalue = resOrdered[,5],
+                             padj = resOrdered[,6])
+kable(head(res.deseq.sum1,10), main = "Top10 Genes Control Vs HIV Untreated",
+      digits = c(2,2,2,50,50))
+
+## import pre-defined gene lists 
+############## core ISGs ################
+isgs <- as.data.frame(read.delim("coreISG"))
+dim(isgs)
+## DE genes in the core ISGs list 
+## directions of regulation 
+isgs.de <- base::merge(res.deseq.sum1, isgs, by = "Gene_ID") %>% .[order(.$pvalue), ] %>% 
+     dplyr::mutate(Direction = ifelse(.$Log2FoldChange > 0, "Up-regulated", "Down-regulated"))
+dim(isgs.de)
+##  all symbols are equal, no 0 fold change
+sum(isgs.de$Symbol.x != isgs.de$Symbol.y)
+sum(isgs.de$Log2FoldChange == 0)
+## 230 genes table 
+kable(isgs.de[, c(1:5,7)], digits = c(2,2,2,30,30), col.names = 
+        c("Gene_ID", "Symbol", "Log2FoldChange", "pvalue", "padj","Direction"))
+
+## FDR 0.05 list 
+n.isgs.05 <- nrow(isgs.de[isgs.de$padj <= 0.05, ])
+paste("Number of Core ISGs with FDR less than or equal to 0.05", n.isgs.05)
+
+
+## volcano plot
+rownames(isgs.de) <- isgs.de$Symbol.x
+
+EnhancedVolcano(isgs.de,
+        lab = rownames(isgs.de),
+        x = "Log2FoldChange",
+        y = "padj",
+        pCutoff = 5e-2,
+        FCcutoff = 1,
+        pLabellingCutoff = 5e-2,
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2.0,
+        transcriptLabSize = 3.5,
+        xlab = bquote(~Log[2]~ "Fold Change"),
+        ylab = bquote(~-Log[10]~adjusted~italic(P)),
+        title = "Core ISGs: HIV Infected vs Health Control",
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+        xlim = c(-4, 4),
+        ylim = c(0, -log10(10e-25)),
+        # adjust the legend
+        legend=c("NS","log2 Fold Change >= 1","adjusted p-value <= 0.05",
+            "adjusted p-value <= 0.05 & log2 Fold Change >= 1"),
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.3,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
+
+EnhancedVolcano(isgs.de,
+        lab = rownames(isgs.de),
+        x = "Log2FoldChange",
+        y = "padj",
+        pCutoff = 5e-2,
+        FCcutoff = 1.5,
+        pLabellingCutoff = 5e-2,
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2.0,
+        transcriptLabSize = 3.5,
+        xlab = bquote(~Log[2]~ "Fold Change"),
+        ylab = bquote(~-Log[10]~adjusted~italic(P)),
+        title = "Core ISGs: HIV Infected vs Health Control",
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+        xlim = c(-4, 4),
+        ylim = c(0, -log10(10e-25)),
+        # adjust the legend
+        legend=c("NS","log2 Fold Change >= 1.5","adjusted p-value <= 0.05",
+            "adjusted p-value <= 0.05 & log2 Fold Change >= 1.5"),
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.3,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
+
+######### Beta specific ##############
+genesbeta <- as.data.frame(read.delim("genesbeta"))
+dim(genesbeta)
+
+## DE genes in the core genesbeta list 
+## directions of regulation 
+genesbeta.de <- base::merge(res.deseq.sum1, genesbeta, by = "Gene_ID") %>% .[order(.$pvalue), ] %>% 
+     dplyr::mutate(Direction = ifelse(.$Log2FoldChange > 0, "Up-regulated", "Down-regulated"))
+dim(genesbeta.de)
+##  all symbols are equal, no 0 fold change
+sum(genesbeta.de$Symbol.x != genesbeta.de$Symbol.y)
+genesbeta.de[ which(genesbeta.de$Symbol.x != genesbeta.de$Symbol.y),]
+sum(genesbeta.de$Log2FoldChange == 0)
+## 423 genes table 
+kable(genesbeta.de[, c(1:5,7)], digits = c(2,2,2,30,30), col.names = 
+        c("Gene_ID", "Symbol", "Log2FoldChange", "pvalue", "padj","Direction"))
+
+## FDR 0.05 list 
+n.genesbeta.05 <- nrow(genesbeta.de[genesbeta.de$padj <= 0.05, ])
+paste("Number of Core genesbeta with FDR less than or equal to 0.05", n.genesbeta.05)
+
+
+## volcano plot
+rownames(genesbeta.de) <- genesbeta.de$Symbol.x
+
+EnhancedVolcano(genesbeta.de,
+        lab = rownames(genesbeta.de),
+        x = "Log2FoldChange",
+        y = "padj",
+        pCutoff = 5e-2,
+        FCcutoff = 1,
+        pLabellingCutoff = 5e-2,
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2.0,
+        transcriptLabSize = 3.5,
+        xlab = bquote(~Log[2]~ "Fold Change"),
+        ylab = bquote(~-Log[10]~adjusted~italic(P)),
+        title = "Core genesbeta: HIV Infected vs Health Control",
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+        xlim = c(-3, 3),
+        ylim = c(0, -log10(10e-25)),
+        # adjust the legend
+        legend=c("NS","log2 Fold Change >= 1","adjusted p-value <= 0.05",
+            "adjusted p-value <= 0.05 & log2 Fold Change >= 1"),
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.3,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
+
+
+```
+
+### How many of them are significantly altered in the clinical gut biopsies?  (Uninfected vs HIV infected).
+For the Core ISGs list, there are `r dim(isgs)[1]`genes, where `r nrow(isgs.de)` of them are in the differential expression list found by DESeq2 with FDR <= 0.1 and `r n.isgs.05` of them are FDR <= 0.05.  
+
+For the IFN-Beta specific genes list, there are `r dim(genesbeta)[1]` genes, where `r nrow(genesbeta.de)` of them are FDR <=0.1, and `r n.genesbeta.05` of them are FDR <= 0.05. 
+
+### Association between genes and clinical outcomes
+
+```{r asso}
+## check the counts of gene list
+cnts.geneid <- rownames_to_column(data.frame(cnts.deseq2), var = "Gene_ID")
+dim(cnts.geneid)
+cnts.isgs <- base::merge(cnts.geneid, isgs, by = "Gene_ID") %>% select(-c("Gene_ID")) %>% 
+  column_to_rownames(var = "Symbol")
+dim(cnts.isgs)
+cnts.isgs <- as.matrix(cnts.isgs)
+## QC plots
+EDASeq::plotRLE(cnts.isgs, 
+        outline = FALSE, col=c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV RLE Plot (Core ISGs DESeq2 Normalization)", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+EDASeq::plotPCA(cnts.isgs, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (Core ISGs DESeq2 Normalization)")
+EDASeq::plotPCA(cnts.isgs, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (Core ISGs DESeq2 Normalization)", k = 3 )
+boxplot(log2(cnts.isgs), main = "Control vs. HIV Boxplot (Core ISGs DESeq2 Normalization)",
+         xlab = "Sample", ylab = "log2 Counts")
+
+## beta specific
+# genesbeta
+cnts.genesbeta <- base::merge(cnts.geneid, genesbeta, by = "Gene_ID") %>% select(-c("Gene_ID")) %>% 
+  column_to_rownames(var = "Symbol")
+dim(cnts.genesbeta)
+cnts.genesbeta <- as.matrix(cnts.genesbeta)
+## QC plots
+EDASeq::plotRLE(cnts.genesbeta, 
+        outline = FALSE, col=c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV RLE Plot (IFN-beta Genes DESeq2 Normalization)", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+EDASeq::plotPCA(cnts.genesbeta, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (IFN-beta Genes DESeq2 Normalization)")
+EDASeq::plotPCA(cnts.genesbeta, col= c(rep("steelblue", 13), rep("tomato", 19)), 
+        main = "Control vs. HIV PCA Plot (IFN-beta Genes DESeq2 Normalization)", k = 3 )
+boxplot(log2(cnts.genesbeta), main = "Control vs. HIV Boxplot (IFN-beta Genes DESeq2 Normalization)",
+         xlab = "Sample", ylab = "log2 Counts")
+
+
+# ## Voom transformation
+# ## The voom method estimates the mean-variance relationship of the log-counts,
+# ## generates a precision weight for each observation and enters these into the limma empirical Bayes analysis pipeline. 
+# ## two group design
+# design <- model.matrix(~0 + pheno$txt)
+# v <- voom(cnts.isgs, design, plot=TRUE)
+# v
+# voom is more suitable for edgeR
+
+
+########################### VST Transformation ######################
+## DESeq2 has VST, 
+## yielding a matrix of values which are now approximately homoskedastic (having constant variance along the range of mean values).
+## are useful when checking for outliers or as input for machine learning techniques such as clustering or linear discriminant analysis.
+
+## check size factors
+dds$sizeFactor
+paste("The size factors vary a lot.")
+# ## vst transformation 
+# dds <- varianceStabilizingTransformation(dds, blind = FALSE, fitType = "parametric")
+# getVarianceStabilizedData(object)
+##  If many of genes have large differences in counts due to the experimental design, it is important to set blind=FALSE for downstream analysis.
+#################################
+## The more the size factors differ, the more residual dependence of the variance on the mean will be found in the transformed data. rlog is a transformation which can perform better in these cases.
+rld <- rlog(dds, blind = FALSE, fitType = "parametric")
+var.cnts.rld <- assay(rld)
+## get linear model ready cnts for core isgs and beta specific
+var.rld <- rownames_to_column(data.frame(var.cnts.rld))
+colnames(var.rld)[1] <- c("Gene_ID")
+
+## gene level dataset
+var.isgs <- base::merge(var.rld, isgs.de, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% 
+                 select(-c(Symbol.x, Symbol.y))
+dim(var.isgs)
+var.genesbeta <- base::merge(var.rld, genesbeta.de, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% 
+                 select(-c(Symbol.x, Symbol.y))
+dim(var.genesbeta)
+
+
+## clustering 
+## core isgs
+dist.isgs <- dist(t(var.isgs[,2:33]))
+plot(hclust(dist.isgs, method = "complete"),
+     main = "Cluster Dendrogram by Core ISGs")
+
+## beta specific
+dist.genesbeta <- dist(t(var.genesbeta[,2:33]))
+plot(hclust(dist.genesbeta, method = "complete"),
+     main = "Cluster Dendrogram by IFN-beta Genes")
+## kmeans cluster
+
+## kmeans and try k
+maxk <- 7
+k_c <- 1:maxk
+k_sws <- NULL
+
+k_wsm <- NULL
+for(i in k_c){
+km <- kmeans(t(var.isgs[,2:33]), i, iter.max = 10)
+k_sws[i] <- sum(km$withinss)
+ if(i == 1){
+   k_wsm <- c(km$withinss)
+ }else{
+   k_wsm <- c(k_wsm, km$withinss)
+ }
+}
+plot(k_c, k_sws, type = "o", 
+     xlab = "Number of Clusters by Core ISGs", ylab = "Sum of Within cluster sum of squares")
+## kmeans for isgs
+kisgs6 <- kmeans(t(var.isgs[,2:33]), 6, iter.max = 10)
+kisgs6$cluster
+## beta 
+for(i in k_c){
+km <- kmeans(t(var.genesbeta[,2:33]), i, iter.max = 10)
+k_sws[i] <- sum(km$withinss)
+ if(i == 1){
+   k_wsm <- c(km$withinss)
+ }else{
+   k_wsm <- c(k_wsm, km$withinss)
+ }
+}
+plot(k_c, k_sws, type = "o", 
+     xlab = "Number of Clusters by IFN-Beta Genes", ylab = "Sum of Within cluster sum of squares")
+## kmeans for beta
+kgbeta3 <- kmeans(t(var.genesbeta[,2:33]), 3, iter.max = 10)
+kgbeta3$cluster
+
+################## linear regression ################
+## import age, gender and clinical outcomes
+## by pid
+## basic clinical data
+basic_cli_CH <- read.delim("Basic_clinical_control_infected_untreated")
+colnames(basic_cli_CH) <- c("pid", "sex", "age", "CD4_Counts", "Plasma_Viral_Load")
+
+#### sample level dataset isgs
+isgs.rld.raw <- as.matrix(t(var.isgs[,2:33])) 
+colnames(isgs.rld.raw) <- var.isgs$Symbol
+## row id to column pid
+isgs.rld.raw <- data.frame(isgs.rld.raw)
+isgs.rld.raw$pid <- rownames(isgs.rld.raw)
+rownames(isgs.rld.raw) <- NULL
+## combine gene counts and clinical data 
+isgs.rld.lin <- base::merge(isgs.rld.raw, basic_cli_CH, by = "pid")
+dim(isgs.rld.lin)
+
+##### sample level dataset genesbeta
+genesbeta.rld.raw <- as.matrix(t(var.genesbeta[,2:33])) 
+colnames(genesbeta.rld.raw) <- var.genesbeta$Symbol
+## row id to column pid
+genesbeta.rld.raw <- data.frame(genesbeta.rld.raw)
+genesbeta.rld.raw$pid <- rownames(genesbeta.rld.raw)
+rownames(genesbeta.rld.raw) <- NULL
+## combine gene counts and clinical data 
+genesbeta.rld.lin <- base::merge(genesbeta.rld.raw, basic_cli_CH, by = "pid")
+dim(genesbeta.rld.lin)
+
+## check same pid
+sum(isgs.rld.lin$pid == genesbeta.rld.lin$pid)
+# the same order of pid 
+
+########################## linear regression ##############################
+## equal length of outcomes and covariates
+gene_FunReg <- function(gene_matrix, clinical_variable, genelistname,clin_var_name){
+  ## number of gene to test, also the number of multiple test
+  n_gene = ncol(gene_matrix)
+  ## outcome lm
+  outcome_lm = lapply(1:n_gene, function(i){
+  lm = lm(gene_matrix[,i]~ clinical_variable + isgs.rld.lin$age + isgs.rld.lin$sex )
+  coef = summary(lm)$coefficients[2, ]
+  return(coef)
+})
+   outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
+                          dimnames = list(
+                     c(colnames(gene_matrix)),
+                        c("Estimate", "Std.Error", "t.statistic", "p.value"))))
+
+   # adjusted p-value
+    outcome_lm =  outcome_lm %>% 
+                              dplyr::mutate(FDR = p.adjust(p.value, "BH", n_gene ),
+                                               names = colnames(gene_matrix)) %>% 
+                                               dplyr::mutate(Estimate = round(Estimate, 10),
+                                                      Std.Error = round(Std.Error, 10),
+                                                      t.statistic = round(t.statistic,4)
+                                                      )%>% 
+                                               select(names, everything())
+   # sort by p.value
+    outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
+ 
+   ## sample size 
+    size = length(clinical_variable) - sum(clinical_variable)
+
+   ## summary table 
+   kable(outcome_lm, 
+         caption = paste("Top Genes from ", genelistname, " Associated with Outcome: ", clin_var_name,
+                         " by p.value", " (Sample Size = ", size, ") ", sep = "" , collapse = ""),
+         digits = c(2,10,10,4,20,20))
+}
+
+############# viral load ####################
+## after rlog  the count data to the log2 scale 
+## whole isgs 
+gene_FunReg(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,235], "Core ISGs", "Plasma Viral Load")
+
+## betas
+gene_FunReg(as.matrix(genesbeta.rld.lin[,2:424]), genesbeta.rld.lin[,428], "IFN-beta Genes", "Plasma Viral Load")
+
+################# CD4 Counts #################
+## whole isgs 
+gene_FunReg(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
+
+## betas
+gene_FunReg(as.matrix(genesbeta.rld.lin[,2:424]), genesbeta.rld.lin[,427], "IFN-beta Genes", "CD4 Counts")
+
+```
+
+### Compare the Associations between Genelists
+
+```{r comparelists}
+gene_FunRegRaw <- function(gene_matrix, clinical_variable, genelistname,clin_var_name){
+  ## number of gene to test, also the number of multiple test
+  n_gene = ncol(gene_matrix)
+  ## outcome lm
+  outcome_lm = lapply(1:n_gene, function(i){
+  lm = lm(gene_matrix[,i]~ clinical_variable + isgs.rld.lin$age + isgs.rld.lin$sex )
+  coef = summary(lm)$coefficients[2, ]
+  return(coef)
+})
+   outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
+                          dimnames = list(
+                     c(colnames(gene_matrix)),
+                        c("Estimate", "Std.Error", "t.statistic", "p.value"))))
+
+   # adjusted p-value
+    outcome_lm =  outcome_lm %>% 
+                              dplyr::mutate(FDR = p.adjust(p.value, "BH", n_gene ),
+                                               names = colnames(gene_matrix)) %>% 
+                                               dplyr::mutate(Estimate = round(Estimate, 10),
+                                                      Std.Error = round(Std.Error, 10),
+                                                      t.statistic = round(t.statistic,4)
+                                                      )%>% 
+                                               select(names, everything())
+   # sort by p.value
+    outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
+ 
+   ## sample size 
+    size = length(clinical_variable) - sum(clinical_variable)
+
+   # ## summary table 
+   # kable(outcome_lm, 
+   #       caption = paste("Top Genes from ", genelistname, " Associated with Outcome: ", clin_var_name,
+   #                       " by p.value", " (Sample Size = ", size, ") ", sep = "" , collapse = ""),
+   #       digits = c(2,10,10,4,20,20))
+    return(outcome_lm)
+}
+
+### cd4 counts
+################# CD4 Counts #################
+## whole isgs 
+isgs.cd4 <- gene_FunRegRaw(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
+
+## betas
+genesbeta.cd4 <- gene_FunRegRaw(as.matrix(genesbeta.rld.lin[,2:424]), genesbeta.rld.lin[,427], "IFN-beta Genes", "CD4 Counts")
+
+## enchanced volcano plots
+## volcano plot
+rownames(isgs.cd4) <- isgs.cd4$names
+EnhancedVolcano(isgs.cd4,
+        lab = rownames(isgs.cd4),
+        x = "Estimate",
+        y = "FDR",
+        FCcutoff = 0.002,
+        xlab = bquote("Effect Size"),
+        ylab = bquote(~-Log[10]~adjusted~italic(P)),
+        title = "Core ISGs: Association with CD4 Counts",
+        xlim = c(-0.003, 0.003),
+        ylim = c(0, -log10(10e-10)),
+        # adjust the legend
+        legend=c("NS","log2 Fold Change >= 0.002","adjusted p-value <= 0.05",
+            "adjusted p-value <= 0.05 & log2 Fold Change >= 0.002"),
+        pLabellingCutoff = 5e-2,
+        pCutoff = 5e-2,
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2.0,
+        transcriptLabSize = 3.5,
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.3,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
+
+## volcano plot
+rownames(genesbeta.cd4) <- genesbeta.cd4$names
+EnhancedVolcano(genesbeta.cd4,
+        lab = rownames(genesbeta.cd4),
+        x = "Estimate",
+        y = "FDR",
+        FCcutoff = 0.002,
+        xlab = bquote("Effect Size"),
+        ylab = bquote(~-Log[10]~adjusted~italic(P)),
+        title = "IFN-beta Genes: Association with CD4 Counts",
+        xlim = c(-0.003, 0.003),
+        ylim = c(0, -log10(10e-10)),
+        # adjust the legend
+        legend=c("NS","log2 Fold Change >= 0.002","adjusted p-value <= 0.05",
+            "adjusted p-value <= 0.05 & log2 Fold Change >= 0.002"),
+        pLabellingCutoff = 5e-2,
+        pCutoff = 5e-2,
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2.0,
+        transcriptLabSize = 3.5,
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.3,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
 ```
 
 # Reference
 1. A comparison of per sample global scaling and per gene normalization methods for differential expression analysis of RNA-seq data, PLos One. 2017. 
+
+2. Voom: precision weights unlock linear model analysis tools for RNA-seq read counts, Charity W Law, Yunshun Chen, Wei Shi and Gordon K Smyth, Genome Biology, 2014 15:R29. 
+
+3. Michael I Love, Wolfgang Huber, Simon Anders: Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biology 2014, 15:550. http://dx.doi.org/10.1186/s13059-014-0550-8.
 
 
 
