@@ -29,9 +29,9 @@ knitr::opts_chunk$set(warning = F)
 ## setting wd in DELL
 ## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
 ## setting working directory in asus 
-## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/CIDA_OMICs/7659Stats_Genetics/HW5/") 
+opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
 ## setting working directory in ubuntu
-opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+## opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
                                                  
 ## cache = F, if cache = T, will not revaluate code chunk everytime
 ## double or more space to insert a line break
@@ -266,7 +266,7 @@ EDASeq::plotRLE(cnts.edger,
         outline = FALSE, col=c(rep("steelblue", 13), rep("tomato", 19)), 
         main = "Control vs. HIV RLE Plot (With Filtering TMM (edgeR) Normalization)", 
         xlab = "Sample", 
-        ylab = "Relative Log Ratio")
+        ylab = "Relative Log Ratio", ylim = c(-2.1, 2.1))
 EDASeq::plotPCA(cnts.edger, col= c(rep("steelblue", 13), rep("tomato", 19)), 
         main = "Control vs. HIV PCA Plot (With Filtering TMM (edgeR) Normalization)")
 EDASeq::plotPCA(cnts.edger, col= c(rep("steelblue", 13), rep("tomato", 19)), 
@@ -521,7 +521,7 @@ EnhancedVolcano(genesbeta.de,
         transcriptLabSize = 3.5,
         xlab = bquote(~Log[2]~ "Fold Change"),
         ylab = bquote(~-Log[10]~adjusted~italic(P)),
-        title = "Core genesbeta: HIV Infected vs Health Control",
+        title = "IFN-beta Genes: HIV Infected vs Health Control",
         #Modify border and remove gridlines
         gridlines.major = FALSE,
         gridlines.minor = FALSE,
@@ -905,14 +905,23 @@ EnhancedVolcano(genesbeta.cd4,
         colConnectors = "grey40",
         col = c("grey30", "forestgreen", "royalblue", "tomato")
         )
+
+### plot some genes
+## plot counts of minimum padj
+plotCounts(dds, gene=which.min(res$padj), intgroup="condition",
+           main = "EOMES")
+
 ```
 
 # Reference
-1. A comparison of per sample global scaling and per gene normalization methods for differential expression analysis of RNA-seq data, PLos One. 2017. 
+1. Biomed Res Int.2015 Jun 15. doi: 10.1155/2015/621690, The Impact of Normalization Methods on RNA-Seq Data Analysis, J. Zyprych-Walczak, A. Szabelska, L. Handschuh, K. Górczak, K. Klamecka, M. Figlerowicz, and I. Siatkowski
 
-2. Voom: precision weights unlock linear model analysis tools for RNA-seq read counts, Charity W Law, Yunshun Chen, Wei Shi and Gordon K Smyth, Genome Biology, 2014 15:R29. 
+2. A comparison of per sample global scaling and per gene normalization methods for differential expression analysis of RNA-seq data, PLos One. 2017. 
 
-3. Michael I Love, Wolfgang Huber, Simon Anders: Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biology 2014, 15:550. http://dx.doi.org/10.1186/s13059-014-0550-8.
+3. Voom: precision weights unlock linear model analysis tools for RNA-seq read counts, Charity W Law, Yunshun Chen, Wei Shi and Gordon K Smyth, Genome Biology, 2014 15:R29. 
+
+4. Michael I Love, Wolfgang Huber, Simon Anders: Moderated estimation of fold change and dispersion for RNA-seq data with DESeq2. Genome Biology 2014, 15:550. http://dx.doi.org/10.1186/s13059-014-0550-8.
+
 
 
 
