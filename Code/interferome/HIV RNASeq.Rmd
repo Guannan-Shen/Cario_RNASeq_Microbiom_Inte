@@ -57,6 +57,7 @@ library(scater)
 library(rgl)
 library(pca3d)
 library(EnhancedVolcano)
+library(RColorBrewer)
 options(stringsAsFactors = F)
 options(dplyr.width = Inf)
 getwd()
@@ -305,9 +306,11 @@ Based on the RLE plots, Boxplots and PCA plots, DESeq2 and TMM of edgeR normaliz
 
 ## DESeq2 Method
 
-The standard differential expression analysis steps in DESeq2 were chosen. The adjusted p value cutoff was set as 0.1 or 0.05. The Benjamini–Hochberg procedure controling false discovery rate (FDR) was used to conduct the p-values adjustment. 
+The standard differential expression analysis steps in DESeq2 were chosen. The adjusted p value cutoff was set as 0.1 or 0.05. The Benjamini-Hochberg procedure controling false discovery rate (FDR) was used to conduct the p-values adjustment. 
 
-```{r deseqDE}
+The TMM in edgeR was chosen based on the RLE (relative log expression) plot. We are in favor of more equal spreads across samples. 
+
+```{r deseqDE_edger}
 ## deseq normalization and DE analysis
 register(MulticoreParam(6))
 dds <- DESeq(dds)
@@ -331,6 +334,8 @@ dim(res.deseq.05)
 # minimum padj
 res[which.min(res$padj),]
 res.sym[which.min(res.sym$padj),]
+## top
+head(res.deseq.05)
 
 # plots 
 ## shrinkage of log2 fc to visualize
@@ -341,11 +346,49 @@ plotMA(resLFC, ylim = c(-5,5))
 ## plot counts of minimum padj
 plotCounts(dds, gene=which.min(res$padj), intgroup="condition",
            main = "EOMES")
+plotCounts(dds, gene=which.min(res$padj), intgroup="condition")
 
 ## DE analysis of edger
-# y <- estimateDisp(y)
-# et <- exactTest(y)
-# topTags(et)
+y <- estimateDisp(y)
+et <- exactTest(y, pair = 1:2)
+### results
+topTags(et, n = 10, adjust.method = "BH")
+head(et$table)
+et$comparison
+## summary results
+summary(decideTests(et, p.value = 0.05,
+            lfc = 0))
+paste(1706+ 2540, "genes with FDR 0.05")
+summary(decideTests(et, p.value = 0.05,
+            lfc = 1))
+paste(157 + 680, "genes with FDR 0.05")
+summary(decideTests(et, p.value = 0.05,
+            lfc = 2))
+## 
+
+## counts and results from edgeR
+## the counts table from edgeR is cnts.edger
+colnames(et$table)
+res.edger <- et$table %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
+                                 FDR = p.adjust(et$table$PValue, method = "BH") )
+rownames(res.edger) <- rownames(et$table)
+head(res.edger[order(res.edger$PValue),])
+
+## plot counts, with source code from plotCounts()
+group.plot <- factor(c(rep(1,13), rep(2,19)), labels = c("Health Control", "HIV Infected"))
+## plot counts
+plot(as.integer(group.plot)+ runif(ncol(cnts.edger), -0.1, 0.1), cnts.edger[which.min(res.edger$PValue), ], 
+    xlim = c(0.5, length(levels(group.plot)) + 0.8), xaxt="n" ,
+    xlab = "Groups", ylab = "Normalized Counts", main = res.edger[which.min(res.edger$PValue), ]$Symbol)
+axis(1, at = seq_along(levels(group.plot)), levels(group.plot))
+## pos below
+text(length(levels(group.plot)) + 0.5, max( cnts.edger[which.min(res.edger$PValue), ]), 
+     paste("log2 Fold Change:", round(res.edger[which.min(res.edger$PValue), ]$logFC,2),
+             "","Adjusted p-value:",  
+           format(res.edger[which.min(res.edger$PValue), ]$FDR,digits=2,scientific=TRUE ),"",
+           "Gene_ID: ", rownames(res.edger)[which.min(res.edger$PValue)],
+                                           sep = "\n"), pos = 1)
+
 
 ```
 
@@ -354,7 +397,7 @@ plotCounts(dds, gene=which.min(res$padj), intgroup="condition",
 ## Core ISGs
 Genes that were induced by all the type I interferons tested in vitro.
 
-## ‘IFN-beta specific genes’
+## IFN-beta specific genes
 
 Genes that were induced specifically by IFN-beta, but not the IFN-alpha subtypes tested
 
