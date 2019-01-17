@@ -29,9 +29,9 @@ knitr::opts_chunk$set(warning = F)
 ## setting wd in DELL
 ## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
 ## setting working directory in asus 
-opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
 ## setting working directory in ubuntu
-## opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
                                                  
 ## cache = F, if cache = T, will not revaluate code chunk everytime
 ## double or more space to insert a line break
@@ -372,7 +372,7 @@ colnames(et$table)
 res.edger <- et$table %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
                                  FDR = p.adjust(et$table$PValue, method = "BH") )
 rownames(res.edger) <- rownames(et$table)
-head(res.edger[order(res.edger$PValue),])
+
 
 ## plot counts, with source code from plotCounts()
 group.plot <- factor(c(rep(1,13), rep(2,19)), labels = c("Health Control", "HIV Infected"))
@@ -382,13 +382,31 @@ plot(as.integer(group.plot)+ runif(ncol(cnts.edger), -0.1, 0.1), cnts.edger[whic
     xlab = "Groups", ylab = "Normalized Counts", main = res.edger[which.min(res.edger$PValue), ]$Symbol)
 axis(1, at = seq_along(levels(group.plot)), levels(group.plot))
 ## pos below
-text(length(levels(group.plot)) + 0.5, max( cnts.edger[which.min(res.edger$PValue), ]), 
+text(length(levels(group.plot)) + 0.5, stats::quantile( cnts.edger[which.min(res.edger$PValue), ], 0.95), 
      paste("log2 Fold Change:", round(res.edger[which.min(res.edger$PValue), ]$logFC,2),
              "","Adjusted p-value:",  
            format(res.edger[which.min(res.edger$PValue), ]$FDR,digits=2,scientific=TRUE ),"",
            "Gene_ID: ", rownames(res.edger)[which.min(res.edger$PValue)],
                                            sep = "\n"), pos = 1)
-
+## simple plot counts function
+sim_plotcounts <- function(genenumber){
+  plot(as.integer(group.plot)+ runif(ncol(cnts.edger), -0.1, 0.1), cnts.edger[genenumber, ], 
+    xlim = c(0.5, length(levels(group.plot)) + 0.8), xaxt="n" ,
+    xlab = "Groups", ylab = "Normalized Counts", main = res.edger[genenumber, ]$Symbol)
+axis(1, at = seq_along(levels(group.plot)), levels(group.plot))
+## pos below
+text(length(levels(group.plot)) + 0.5, stats::quantile( cnts.edger[genenumber, ], 0.95), 
+     paste("log2 Fold Change:", round(res.edger[genenumber, ]$logFC,2),
+             "","Adjusted p-value:",  
+           format(res.edger[genenumber, ]$FDR,digits=2,scientific=TRUE ),"",
+           "Gene_ID: ", rownames(res.edger)[genenumber],
+                                           sep = "\n"), pos = 1)
+}
+## plot top 10
+for(i in order(res.edger$PValue)[1:10]){
+  sim_plotcounts(i)
+}
+## check 
 
 ```
 
@@ -420,6 +438,7 @@ res.deseq.sum1 <- data.frame(Gene_ID = rownames(res.order.geneid),
                              padj = resOrdered[,6])
 kable(head(res.deseq.sum1,10), main = "Top10 Genes Control Vs HIV Untreated",
       digits = c(2,2,2,50,50))
+
 
 ## import pre-defined gene lists 
 ############## core ISGs ################
@@ -807,6 +826,8 @@ gene_FunReg(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,235], "Core ISGs", "P
 ## betas
 gene_FunReg(as.matrix(genesbeta.rld.lin[,2:424]), genesbeta.rld.lin[,428], "IFN-beta Genes", "Plasma Viral Load")
 
+
+isgs.rld.lin[,235] == genesbeta.rld.lin[,428]
 ################# CD4 Counts #################
 ## whole isgs 
 gene_FunReg(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
@@ -956,6 +977,300 @@ plotCounts(dds, gene=which.min(res$padj), intgroup="condition",
 
 ```
 
+
+
+```{r edgerredo}
+## the list of edgeR DE genes 
+res.edger.order <- res.edger[order(res.edger$PValue), ]
+res.edger.order <- res.edger.order %>% dplyr::mutate(Direction = ifelse(logFC > 0, "Up-regulated", "Down-regulated"))
+rownames(res.edger.order) <- rownames(res.edger[order(res.edger$PValue), ])
+kable(head(res.edger.order[,-2],10),  digits = c(2,50,2,50,2))
+## number of genes
+nrow(res.edger.order[res.edger.order$FDR <= 0.05, ])
+nrow(res.edger.order[(res.edger.order$FDR <= 0.05) & ((res.edger.order$logFC >= 1) | (res.edger.order$logFC <= -1 )), ])
+###
+## summary results
+summary(decideTests(et, p.value = 0.05,
+            lfc = 0))
+paste(1706+ 2540, "genes with FDR 0.05")
+summary(decideTests(et, p.value = 0.05,
+            lfc = 1))
+paste(157 + 680, "genes with FDR 0.05")
+summary(decideTests(et, p.value = 0.05,
+            lfc = 2))
+## the results matrix with 0, 1, -1 
+# decideTests(et, p.value = 0.05, lfc = 1)
+res.edger.05 <- res.edger.order[res.edger.order$FDR <= 0.05, ] 
+res.edger.05$Gene_ID <- rownames(res.edger.05)
+dim(res.edger.05)
+
+## the two cutoffs
+res.edger.05.1 <- res.edger.order[(res.edger.order$FDR <= 0.05) & ((res.edger.order$logFC >= 1) | (res.edger.order$logFC <= -1 )), ]
+res.edger.05.1$Gene_ID <- rownames(res.edger.05.1)
+dim(res.edger.05.1)
+## merge the DE list with predefined genelist 
+############################ core ISGs#############################
+isgs.edger.05 <- base::merge(res.edger.05, isgs, by = "Gene_ID") 
+dim(isgs.edger.05)
+
+isgs.edger.05.1 <- base::merge(res.edger.05.1, isgs, by = "Gene_ID") 
+dim(isgs.edger.05.1)
+
+colnames(isgs.edger.05 )
+## volcano plot
+rownames(isgs.edger.05 ) <- isgs.edger.05$Symbol.x
+
+EnhancedVolcano(isgs.edger.05 ,
+        lab = rownames(isgs.edger.05 ),
+        x = "logFC",
+        y = "FDR",
+        pCutoff = 5e-2,
+        FCcutoff = 1,
+        pLabellingCutoff = 5e-2,
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2.0,
+        transcriptLabSize = 3.5,
+        xlab = bquote(~Log[2]~ "Fold Change"),
+        ylab = bquote(~-Log[10]~adjusted~italic(P)),
+        title = "Core ISGs: HIV Infected vs Health Control by edgeR",
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+        xlim = c(-4, 4),
+        ylim = c(0, -log10(10e-25)),
+        # adjust the legend
+        legend=c("NS","log2 Fold Change >= 1","adjusted p-value <= 0.05",
+            "adjusted p-value <= 0.05 & log2 Fold Change >= 1"),
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.3,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
+
+############################ ifn beta genes ############################# 
+## DE genes in the core genesbeta list 
+## directions of regulation 
+genesbeta.edger.05 <- base::merge(res.edger.05, genesbeta, by = "Gene_ID") 
+dim(genesbeta.edger.05)
+
+genesbeta.edger.05.1 <- base::merge(res.edger.05.1, genesbeta, by = "Gene_ID")
+dim(genesbeta.edger.05.1)
+
+########## association ###########
+###### still use rlog transformation of deseq2 normalized counts data ###############
+## gene level dataset
+####### 
+rlog.isgs.05 <- base::merge(var.rld, isgs.edger.05, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% 
+                 select(-c(Symbol.x, Symbol.y))
+dim(rlog.isgs.05)
+
+rlog.isgs.05.1 <- base::merge(var.rld, isgs.edger.05.1, by = "Gene_ID") %>% 
+  dplyr::mutate(Symbol = Symbol.x) %>% 
+                 select(-c(Symbol.x, Symbol.y))
+dim(rlog.isgs.05.1)
+
+
+######### 
+rlog.genesbeta.05 <- base::merge(var.rld, genesbeta.edger.05, by = "Gene_ID") %>% 
+  dplyr::mutate(Symbol = Symbol.x) %>% 
+                 select(-c(Symbol.x, Symbol.y))
+dim(rlog.genesbeta.05)
+
+rlog.genesbeta.05.1 <- base::merge(var.rld, genesbeta.edger.05.1, by = "Gene_ID") %>% 
+  dplyr::mutate(Symbol = Symbol.x) %>% 
+                 select(-c(Symbol.x, Symbol.y))
+dim(rlog.genesbeta.05.1)
+
+
+########### check the effect of regularized log ###############
+## compare the effect of rlog
+n <- which(rownames(cnts.deseq2) %in% rlog.isgs.05[1, 1])
+n
+plot(density(as.numeric(  cnts.deseq2[n,] )), main="normalized counts (DESeq2)", cex.main=2)
+plot(density(as.numeric(rlog.isgs.05[1,2:33])), main="rlog", cex.main=2)
+plot(density(rnorm(10000, 0, 1)), main="ideal", cex.main=2)
+
+## mean and sd relationship
+library(vsn)
+meanSdPlot(as.matrix(cnts.deseq2), main="normalized counts (DESeq2)")
+meanSdPlot(as.matrix(var.cnts.rld), main="rlog")
+plot(1:2000, rep(5,2000), type = "l", main = "ideal")
+
+## check number of participants in the association data
+nrow(isgs.rld.lin[,2:231])
+
+## make data ready for linear regression
+rlog.isgs.05.raw <- as.matrix(t(rlog.isgs.05[,2:33])) 
+colnames(rlog.isgs.05.raw) <- rlog.isgs.05$Symbol
+## row id to column pid
+rlog.isgs.05.raw <- data.frame(rlog.isgs.05.raw)
+
+##  
+rlog.isgs.05.1.raw <- as.matrix(t(rlog.isgs.05.1[,2:33])) 
+colnames(rlog.isgs.05.1.raw) <- rlog.isgs.05.1$Symbol
+## row id to column pid
+rlog.isgs.05.1.raw <- data.frame(rlog.isgs.05.1.raw)
+
+######### for genes beta
+## make data ready for linear regression
+rlog.genesbeta.05.raw <- as.matrix(t(rlog.genesbeta.05[,2:33])) 
+colnames(rlog.genesbeta.05.raw) <- rlog.genesbeta.05$Symbol
+## row id to column pid
+rlog.genesbeta.05.raw <- data.frame(rlog.genesbeta.05.raw)
+
+##  
+rlog.genesbeta.05.1.raw <- as.matrix(t(rlog.genesbeta.05.1[,2:33])) 
+colnames(rlog.genesbeta.05.1.raw) <- rlog.genesbeta.05.1$Symbol
+## row id to column pid
+rlog.genesbeta.05.1.raw <- data.frame(rlog.genesbeta.05.1.raw)
+
+
+
+## run test association 
+############ viral load ################
+## whole isgs 
+gene_FunReg(as.matrix(rlog.isgs.05.raw), isgs.rld.lin[,235], "Core ISGs", "Plasma Viral Load")
+gene_FunReg(as.matrix(rlog.isgs.05.1.raw), isgs.rld.lin[,235], "Core ISGs", "Plasma Viral Load")
+
+
+## betas
+gene_FunReg(as.matrix(rlog.genesbeta.05.raw), isgs.rld.lin[,235], "IFN-beta Genes", "Plasma Viral Load")
+gene_FunReg(as.matrix(rlog.genesbeta.05.1.raw), isgs.rld.lin[,235], "IFN-beta Genes", "Plasma Viral Load")
+
+
+isgs.rld.lin[,235] == genesbeta.rld.lin[,428]
+################# CD4 Counts #################
+## whole isgs 
+gene_FunReg(as.matrix(rlog.isgs.05.raw), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
+gene_FunReg(as.matrix(rlog.isgs.05.1.raw), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
+
+## betas
+gene_FunReg(as.matrix(rlog.genesbeta.05.raw), isgs.rld.lin[,234], "IFN-beta Genes", "CD4 Counts")
+gene_FunReg(as.matrix(rlog.genesbeta.05.1.raw), isgs.rld.lin[,234], "IFN-beta Genes", "CD4 Counts")
+
+
+######### scatter plot ######################
+
+######### viral load #####
+########## ifn beta
+scatter_vl_beta <- function(Symbol){
+ggplot(mapping = aes(x = isgs.rld.lin[,235], 
+                     y = rlog.genesbeta.05.1.raw[,which(colnames(rlog.genesbeta.05.1.raw) %in% Symbol) ])) + 
+  ylab("rlog transformed counts") +
+  xlab("Blood HIV Viral Load") +
+  geom_point(colour = "gray15", size = 2, shape = 20) +
+  geom_smooth(method = "loess", se = FALSE, colour = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, colour = "tomato") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(color="black", size=14, face="bold.italic"),
+    axis.title.x = element_text(color="black", size=12, face="bold"),
+    axis.title.y = element_text(color="black", size=12, face="bold"),
+    axis.text.x = element_text(face="bold", color="black", size=10, angle=0),
+    axis.text.y = element_text(face="bold", color="black", size=10, angle=0) ) +
+    annotate("text", x = mean(isgs.rld.lin[,234]), 
+             y = quantile(rlog.genesbeta.05.1.raw[,which(colnames(rlog.genesbeta.05.1.raw) %in% Symbol) ], 0.95), 
+             label = Symbol)
+
+}
+for( i in c("THOC3", "AQP3")){
+  print(scatter_vl_beta(i))
+}
+################### cd4 counts #####################
+############# core ISGs ############# 
+p.irs1 <-  ggplot(mapping = aes(x = isgs.rld.lin[,234], y = rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% "IRS1") ])) + 
+  ylab("rlog transformed counts") +
+  xlab("Blood CD4 counts") +
+  geom_point(colour = "gray15", size = 2, shape = 20) +
+  geom_smooth(method = "loess", se = FALSE, colour = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, colour = "tomato") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(color="black", size=14, face="bold.italic"),
+    axis.title.x = element_text(color="black", size=12, face="bold"),
+    axis.title.y = element_text(color="black", size=12, face="bold"),
+    axis.text.x = element_text(face="bold", color="black", size=10, angle=0),
+    axis.text.y = element_text(face="bold", color="black", size=10, angle=0) ) +
+    annotate("text", x = mean(isgs.rld.lin[,234]), 
+             y = quantile(rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% "IRS1") ], 0.95), 
+             label = "IRS1")
+p.irs1 
+
+scatter_cd4counts_isgs <- function(Symbol){
+ggplot(mapping = aes(x = isgs.rld.lin[,234], y = rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% Symbol) ])) + 
+  ylab("rlog transformed counts") +
+  xlab("Blood CD4 counts") +
+  geom_point(colour = "gray15", size = 2, shape = 20) +
+  geom_smooth(method = "loess", se = FALSE, colour = "steelblue") +
+  geom_smooth(method = "lm", se = FALSE, colour = "tomato") +
+  theme_bw() +
+  theme(
+    plot.title = element_text(color="black", size=14, face="bold.italic"),
+    axis.title.x = element_text(color="black", size=12, face="bold"),
+    axis.title.y = element_text(color="black", size=12, face="bold"),
+    axis.text.x = element_text(face="bold", color="black", size=10, angle=0),
+    axis.text.y = element_text(face="bold", color="black", size=10, angle=0) ) +
+    annotate("text", x = mean(isgs.rld.lin[,234]), 
+             y = quantile(rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% Symbol) ], 0.95), 
+             label = Symbol)
+
+}
+
+## plot 
+for(i in c("IRS1", "MVB12A", "ODF3B","LGALS3BP", "UBA7", "MYD88","LAG3","TRIM69", "PSMB9", "PSME2")){
+  print(scatter_cd4counts_isgs(Symbol = i))
+}
+
+
+## PCA with important genes with TMM NORMARLIZED data 
+########## pcd by filtered core ISGs 0.05 log2 FC 1
+## PCA of prcomp
+# pc <- princomp(cnts_f, cor=TRUE, scores=TRUE)
+# pc$scores
+cnts.edger.isg.05.1 <- t(cnts.edger[rownames(cnts.edger)  %in% isgs.edger.05.1$Gene_ID, ])
+sum(colnames(cnts.edger.isg.05.1 ) != isgs.edger.05.1$Gene_ID)
+colnames(cnts.edger.isg.05.1 )  <- isgs.edger.05.1$Symbol.x
+edger.pca.isgs.05.1 <- prcomp(cnts.edger.isg.05.1 , 
+                     center = TRUE, scale. = TRUE, retx = TRUE)
+plot(edger.pca.isgs.05.1)
+pca3d(edger.pca.isgs.05.1, components = 1:3, col= c(rep("steelblue", 13), rep("tomato", 19)),
+      title = "Core ISGs with FDR 0.05 and log2 FC 1",
+      radius = 1.5, show.labels = TRUE)
+## 'princomp' can only be used with more units than variables
+## pc <- princomp(t(cnts.edger[rownames(cnts.edger)  %in% isgs.edger.05.1$Gene_ID, ]), cor=TRUE, scores=TRUE)
+getwd()
+######## key genes
+###### LAG3 ODF3B
+num.keygenes <- which( rownames(edger.pca.isgs.05.1$rotation) %in% c("LAG3", "ODF3B","NLRC5") )
+plot3d(edger.pca.isgs.05.1$x[,1:3], col= c(rep("steelblue", 13), rep("tomato", 19)) )
+text3d(edger.pca.isgs.05.1$rotation[num.keygenes,1:3]*20, 
+       texts=rownames(edger.pca.isgs.05.1$rotation)[num.keygenes], col="black", justify = "left",
+       font = 5)
+coords <- NULL
+for (i in num.keygenes) {
+  coords <- rbind(coords, rbind(c(0,0,0),edger.pca.isgs.05.1$rotation[i,1:3]*20))
+}
+lines3d(coords, col="black", lwd=2)
+
+######### snapshot
+# rgl.bringtotop()
+# rgl.viewpoint(0, 20)
+# rgl.snapshot("test.png")
+
+```
 # Reference
 1. Biomed Res Int.2015 Jun 15. doi: 10.1155/2015/621690, The Impact of Normalization Methods on RNA-Seq Data Analysis, J. Zyprych-Walczak, A. Szabelska, L. Handschuh, K. Górczak, K. Klamecka, M. Figlerowicz, and I. Siatkowski
 
