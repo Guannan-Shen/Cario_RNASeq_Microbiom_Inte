@@ -1255,7 +1255,8 @@ getwd()
 ######## key genes
 ###### LAG3 ODF3B
 num.keygenes <- which( rownames(edger.pca.isgs.05.1$rotation) %in% c("LAG3", "ODF3B","NLRC5") )
-plot3d(edger.pca.isgs.05.1$x[,1:3], col= c(rep("steelblue", 13), rep("tomato", 19)) )
+plot3d(edger.pca.isgs.05.1$x[,1:3], col= c(rep("steelblue", 13), rep("tomato", 19)) , 
+       size = 1, type = 's')
 text3d(edger.pca.isgs.05.1$rotation[num.keygenes,1:3]*20, 
        texts=rownames(edger.pca.isgs.05.1$rotation)[num.keygenes], col="black", justify = "left",
        font = 5)
@@ -1265,10 +1266,88 @@ for (i in num.keygenes) {
 }
 lines3d(coords, col="black", lwd=2)
 
-######### snapshot
+# # add legend
+# legend3d("topright", legend = paste( c('Health Control', 
+#                                               'HIV Infected')), 
+#          pch = 16, col = c("steelblue", "tomato"), cex=1, inset=c(0.02))
+# 
+# # capture snapshot
+# # snapshot3d(filename = '3dplot.png', fmt = 'png')
+# 
+# ######### snapshot
 # rgl.bringtotop()
 # rgl.viewpoint(0, 20)
 # rgl.snapshot("test.png")
+
+```
+
+```{r focusTMM}
+## # all integer in cnts_f, filtered counts
+### cnts  cnts.edger cnts.deseq2 cnts.tpm
+
+## var.cnts.rld rlog transformed counts, based on DESeq2 normalization
+
+## pca
+
+## edger.pca.isgs.05.1$x  the matrix define the scatter of points, 1 to 13 health control
+
+##  explore scater
+# the counts data
+# data("sc_example_counts")
+# 
+# ## the dataframe has condition information
+# data("sc_example_cell_info")
+# 
+# example_sce <- SingleCellExperiment(
+#                  assays = list(counts = sc_example_counts),
+#                  colData = sc_example_cell_info)
+
+rna_info <- data.frame(pid = rna.pid, Group = as.factor(c(rep("Control", 13), 
+                                                     rep("HIV Infected", 19)
+                                                     )) )
+rna_info$Group %<>% relevel("Control")
+## cnts. list
+cnts.list <- list(cnts_f, cnts.edger, cnts.deseq2, cnts.tpm)
+cnts.names <- c("Filtered Counts", "TMM Normalized Counts",
+                "DESeq2 Normalized Counts", "TPM Normalized Counts")
+for (i in 1:4){
+  j  = cnts.list[[i]]
+  ## using scater, start with an object
+example_sce <- SingleCellExperiment(
+                 assays = list(counts = j),
+                 colData = rna_info)
+## RLE plots
+print( scater::plotRLE(example_sce, exprs_values = "counts", exprs_logged = FALSE,
+        colour_by = "Group", style = "minimal") + scale_x_discrete("Samples", labels = rna.pid) + labs(caption = paste("RLE Plot:" ,cnts.names[i]) ) )
+## pca plots
+example_sce <- SingleCellExperiment(
+                 assays = list(logcounts = j),
+                 colData = rna_info)
+print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
+}
+## define the gene list 
+invitro_genes <- c("Mx2", "APOBEC3G", "Tetherin", "ISG15", "CD169")
+## turn in to upper case
+invitro_genes[ sapply(invitro_genes, toupper) %nin% res.edger.05$Symbol ]
+invitro_genes[ sapply(invitro_genes, toupper) %nin% res.edger.05.1$Symbol ]
+
+## check
+# "CD169" %in% res.edger.05$Symbol
+# "TETHERIN" %in% res.edger.05$Symbol
+# "CD169" %in% res.edger.order$Symbol
+# "TETHERIN" %in% res.edger.order$Symbol
+"CD169" %in% cnts.raw$Symbol
+"TETHERIN" %in% cnts.raw$Symbol
+# "CD169" %in% isgs$Symbol
+# "TETHERIN" %in% isgs$Symbol
+# "CD169" %in% genesbeta$Symbol
+# "TETHERIN" %in% genesbeta$Symbol
+## 
+cnts.raw[ cnts.raw$Symbol %in% "APOBEC3G", ]
+## a fold change is the ratio of the averages
+res.edger.05[res.edger.05$Symbol %in% sapply(invitro_genes, toupper),c(4,1,5)]
+############## RECHECK vitro genes#########################
+
 
 ```
 # Reference
