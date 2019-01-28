@@ -754,6 +754,10 @@ kgbeta3$cluster
 basic_cli_CH <- read.delim("Basic_clinical_control_infected_untreated")
 colnames(basic_cli_CH) <- c("pid", "sex", "age", "CD4_Counts", "Plasma_Viral_Load")
 
+# check pid
+rna.pid
+basic_cli_CH$pid [basic_cli_CH$pid %nin% rna.pid]
+
 #### sample level dataset isgs
 isgs.rld.raw <- as.matrix(t(var.isgs[,2:33])) 
 colnames(isgs.rld.raw) <- var.isgs$Symbol
@@ -1345,9 +1349,30 @@ invitro_genes[ sapply(invitro_genes, toupper) %nin% res.edger.05.1$Symbol ]
 ## 
 cnts.raw[ cnts.raw$Symbol %in% "APOBEC3G", ]
 ## a fold change is the ratio of the averages
-res.edger.05[res.edger.05$Symbol %in% sapply(invitro_genes, toupper),c(4,1,5)]
+vitro_table_seq <- res.edger.05[res.edger.05$Symbol %in% sapply(invitro_genes, toupper),c(4,1,5)]
+vitro_table_seq[4,] <- c("Tetherin", "", "")
+vitro_table_seq[5,] <- c("CD169", "", "")
+colnames(vitro_table_seq) <- c("Symbol", "RNA-Seq logFC","FDR")
+vitro_table_seq
 ############## RECHECK vitro genes#########################
-
+## read in all clinical data
+clinical_ready <- read_excel("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/clinical_ready.xlsx")
+## clinical_ready <- unlist(clinical_ready)
+clinical_ready <- as.data.frame(clinical_ready)
+# factor(clinical_ready$Group)
+# clinical_ready$Group %<>% relevel("control")
+for(j in 1:5){
+i = c(22,20,19,21,23)[j]
+t_vitro = t.test(clinical_ready[,i] ~ clinical_ready$Group)
+vitro_table_seq[j,4] <-round(log2(t_vitro$estimate[2] - t_vitro$estimate[1]),2)
+vitro_table_seq[j,5] <- round(t_vitro$p.value,5)
+colnames(vitro_table_seq)[c(4,5)] <- c("qRT-PCR logFC", "t-test p.value")
+}
+kable(vitro_table_seq, digits = c(2,2,2,2,5))
+# formatC(numb, format = "e", digits = 2)
+## format(res.edger[which.min(res.edger$PValue), ]$FDR,digits=2,scientific=TRUE )
+## formatC
+## prettyNum()
 
 ```
 # Reference
