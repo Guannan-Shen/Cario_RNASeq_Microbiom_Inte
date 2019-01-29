@@ -1374,7 +1374,317 @@ kable(vitro_table_seq, digits = c(2,2,2,2,5))
 ## formatC
 ## prettyNum()
 
+############## get dataet ready for association test ###########
+dim(clinical_ready)
+clinical_ready$pid[1:24] <- gsub("MIHIV", "H", clinical_ready$pid[1:24]) 
+clinical_ready$pid[25:38] <- gsub("MIHIV", "C", clinical_ready$pid[25:38]) 
+clinical <- clinical_ready[clinical_ready$pid %in% rna.pid, ]
+dim(clinical)
+## now we have data clinical
+## using FDR 0.05 cutoff to get the rlog data ready
+## isgs.edger.05 has the gene symbol list 
+length(unique(isgs$Symbol)) == nrow(isgs)  ## every symbol in isgs is unique
+length(unique(genesbeta$Symbol)) == nrow(genesbeta) 
+nrow(isgs); nrow(genesbeta) 
+length(unique(res.edger$Symbol)) == nrow(res.edger)
+## res.edger
+sum(res.edger$Symbol != cnts_fsym$Symbol )
+paste("Using Symbol as identifier")
+  ######### isgs #############
+isgs.edger <- res.edger[ res.edger$Symbol %in% isgs$Symbol, ]
+nrow(isgs.edger) == nrow(isgs)
+## 117 genes out of 230 FDR 0.05 in ISGs.
+nrow(isgs.edger[ isgs.edger$FDR <= 0.05, ]  )
+## ranked by logFC
+isgs.save <- isgs.edger[base::order(isgs.edger$logFC, decreasing = TRUE), c(4,1,5)]
+isgs.save$Gene_ID <- row.names(isgs.save)
+
+write.xlsx(isgs.save,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/ISGs_DEanalysis_results.xlsx",
+           sheetName="ISGs Results")
+
+  ########  genes beta ##############
+genesbeta.edger <- res.edger[ res.edger$Symbol %in% genesbeta$Symbol, ]
+genesbeta$Symbol [genesbeta$Symbol %nin%res.edger$Symbol]
+genesbeta.edger[423,] <- res.edger[row.names(res.edger) ==  genesbeta$Gene_ID [genesbeta$Symbol %nin%res.edger$Symbol] , ]
+nrow(genesbeta.edger) == nrow(genesbeta)
+# 130 genes out of 423 FDR IFN-beta genes.
+genesbeta.edger[423,4] <- genesbeta$Symbol [genesbeta$Symbol %nin%res.edger$Symbol]
+nrow(isgs.edger[ genesbeta.edger$FDR <= 0.05, ]  )
+
+genesbeta.save <- genesbeta.edger[base::order(genesbeta.edger$logFC, decreasing = TRUE), c(4,1,5)]
+genesbeta.save$Gene_ID <- row.names(genesbeta.save)
+
+write.xlsx(genesbeta.save,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/IFNbeta_DEanalysis_results.xlsx",
+           sheetName="IFNbeta Results")
+
+
+### by the way, save data file
+## rlog transformed data
+sum(var.rld$Gene_ID != row.names(cnts_fsym))
+var.rld.save <- var.rld %>% dplyr::mutate(Symbol = cnts_fsym$Symbol) %>% dplyr::select(Gene_ID, Symbol, everything())
+
+write.xlsx(var.rld.save,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/rlog_counts_linear_regression.xlsx",
+           sheetName="rlog transformed counts")
+
+## TMM normalized counts
+sum(row.names(cnts.edger) != row.names(cnts_fsym))
+cnts.edger <- data.frame(cnts.edger) %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
+                                                       Gene_ID = row.names(cnts_fsym))  %>% dplyr::select(Gene_ID, Symbol, everything())
+write.xlsx(cnts.edger,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/TMM_normalized_counts.xlsx",
+           sheetName="TMM Normalized Counts")
+
+## ## gene level dataset
+var.isgs.05 <- base::merge(var.rld, isgs.edger.05, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% 
+                 select(-c(Symbol.x, Symbol.y))
+
+dim(var.isgs.05)
+isgs.05.lin <- t(var.isgs.05[2:33])
+base::colnames(isgs.05.lin) <- var.isgs.05$Symbol
+
+head(isgs.05.lin)
+
+var.genesbeta.05 <- base::merge(var.rld, genesbeta.edger.05, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% select(-c(Symbol.x, Symbol.y))
+dim(var.genesbeta.05)
+
+genesbeta.05.lin <- t(var.genesbeta.05[2:33])
+base::colnames(genesbeta.05.lin) <- var.genesbeta.05$Symbol
+head(genesbeta.05.lin)
+
+################### make clinical as the same pid order of gene #################
+## not the same order
+## check
+sum(as.matrix(rlog.isgs.05.raw) != isgs.05.lin)
+sum(isgs.rld.lin[,234] != clinical[,6])
+sum(isgs.rld.lin$age == clinical$age)
+## 
+isgs.05.lin.order <- data.frame(isgs.05.lin) %>% dplyr::mutate(pid = row.names(isgs.05.lin))
+clinical_order <- base::merge(clinical, isgs.05.lin.order, by = "pid")
+clinical_order <- clinical_order[,1:18]
+
+## clinical_order$pid == row.names(isgs.05.lin)
+
+########### association ################
+## data isgs.05.lin genesbeta.05.lin and clinical 
+
+########################## linear regression ##############################
+## equal length of outcomes and covariates
+gene_IFNReg <- function(gene_matrix, clinical_variable, clin_var_name){
+  # get names ready
+  genelistname = base::colnames(gene_matrix)
+  ## number of gene to test, also the number of multiple test
+  n_gene = ncol(gene_matrix)
+  ## outcome lm
+  outcome_lm = lapply(1:n_gene, function(i){
+  lm = lm(gene_matrix[,i]~ clinical_variable + clinical_order$age + clinical_order$sex )
+  coef = summary(lm)$coefficients[2, ]
+  return(coef)
+})
+   outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
+                          dimnames = list(
+                     c(colnames(gene_matrix)),
+                        c("Estimate", "Std.Error", "t.statistic", "p.value"))))
+
+   # adjusted p-value
+    outcome_lm =  outcome_lm %>% 
+                              dplyr::mutate(FDR = p.adjust(p.value, "BH", n_gene ),
+                                               names = colnames(gene_matrix)) %>% 
+                                               dplyr::mutate(Estimate = round(Estimate, 10),
+                                                      Std.Error = round(Std.Error, 10),
+                                                      t.statistic = round(t.statistic,4)
+                                                      )%>% 
+                                               select(names, everything())
+   # sort by p.value
+    outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
+ 
+   ## sample size 
+    size = sum(!is.na(clinical_variable))
+
+   ## summary table 
+   return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
+}
+
+clinical_names <- c("Blood CD4 T Cell Counts (cells/ul)", "Plasma Viral Load", "Tissue HIV RNA (per CD4 T cell)",
+                    "Tissue CD4 T Cell Counts (number/g)", "IL-6 (pg/ml)", "CRP (ug/ml)", "iFABP (pg/ml)",
+                    "sCD27 (U/ml)", "CD14 (ng/ml)", "LPS (pg/ml)", "LTA (OD)", 
+                    base::paste("IFN", '\u03b1', sep = "" ),  base::paste("IFN", '\u03b2', sep = "" ))
+n_clinical <- length(clinical_names)
+n_clinical
+clinical_sum <- matrix(NA, 13,8)
+for(i in 1:n_clinical) {
+  ## number of clinical virable
+  j = c(6:18)[i]
+  cliname = base::colnames(clinical_order)[j]
+  ## linear regression
+  lin_res_isgs = gene_IFNReg(isgs.05.lin, clinical_order[,j], clinical_names[i])
+  lin_res_genesbeta = gene_IFNReg(genesbeta.05.lin, clinical_order[,j], clinical_names[i])
+  ## save data
+ 
+  write.xlsx(lin_res_isgs$results,
+            paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/isgs_", cliname,".xlsx", sep = ""),
+           sheetName= paste("ISGs_", cliname, sep = "") )
+  write.xlsx(lin_res_genesbeta$results,
+            paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/ifnbeta_", cliname,".xlsx", sep = ""),
+           sheetName= paste("ifnbeta_", cliname, sep = ""))
+  
+  ## check basic
+  if(lin_res_isgs$size == lin_res_genesbeta$size){
+    print("Good")
+  }else stop("sample size wrong")
+  if(lin_res_isgs$clinical == lin_res_genesbeta$clinical){
+    print("Good")
+  }else stop("clinical parameter wrong")
+  ## number of genes
+  nisgs = nrow(lin_res_isgs$results)
+  ngenesbeta = nrow(lin_res_genesbeta$results)
+  ################## summary table ###################
+  ###  sig prop
+  isgs.sig.no =  sum(lin_res_isgs$results$FDR <= 0.05)
+  genesbeta.sig.no =  sum(lin_res_genesbeta$results$FDR <= 0.05)
+  if( (isgs.sig.no >= 5) & (genesbeta.sig.no >= 5) ){
+    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = FALSE)
+    sig.p = prop.test.sig$p.value
+  }else{
+    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = TRUE)
+    sig.p = prop.test.sig$p.value
+  }
+         ########### volcano plots ################
+  if(min(lin_res_isgs$results$FDR) <= 0.05){
+    rownames(lin_res_isgs$results) <- lin_res_isgs$results$names
+  p1 <- EnhancedVolcano(lin_res_isgs$results ,
+        lab = rownames(lin_res_isgs$results),
+        x = "Estimate",
+        y = "p.value",
+        pCutoff = ifelse( min(lin_res_isgs$results$FDR) <= 0.05,
+                          lin_res_isgs$results$p.value[max(which(lin_res_isgs$results$FDR <= 0.05))] + 0.005, 
+                          0.05),
+        FCcutoff = round(max(abs(quantile(lin_res_isgs$results$Estimate, c(0.25, 0.75) ))),1),
+        title = paste("Core ISGs: association with ", lin_res_genesbeta$clinical , sep = ""),
+        xlim = range(lin_res_isgs$results$Estimate)*1.3,
+        ylim = c(0, -log10(min(lin_res_isgs$results$p.value)/5000)),
+        legend=c("NS","Slope","FDR Significant",
+            "FDR Significant & Slope"),
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2,
+        transcriptLabSize = 3,
+        xlab = bquote(~Log[2]~ "Slope"),
+        ylab = bquote(~-Log[10]~italic(P)),
+        
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+   
+        # adjust the legend
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.2,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
+  ggsave(paste("Volcanol_Plot_ISGs_", cliname, sep = ""), width = 6, height = 9, device = "tiff", path = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/Reports/plots", dpi = 300)
+  } else{print("No Sig.")}
+ 
+  if(min(lin_res_genesbeta$results$FDR) <= 0.05){
+  rownames(lin_res_genesbeta$results) <- lin_res_genesbeta$results$names
+  p1 <- EnhancedVolcano(lin_res_genesbeta$results ,
+        lab = rownames(lin_res_genesbeta$results),
+        x = "Estimate",
+        y = "p.value",
+        pCutoff = ifelse( min(lin_res_genesbeta$results$FDR) <= 0.05,
+                          lin_res_genesbeta$results$p.value[max(which(lin_res_genesbeta$results$FDR <= 0.05))] + 0.005, 
+                          0.005),
+        FCcutoff = max(abs(quantile(lin_res_genesbeta$results$Estimate, c(0.25, 0.75) ))) ,
+        title = paste("IFNBeta Genes: association with ", lin_res_genesbeta$clinical , sep = ""),
+        xlim = range(lin_res_genesbeta$results$Estimate)*1.3,
+        ylim = c(0, -log10(min(lin_res_genesbeta$results$p.value)/5000)),
+        legend=c("NS","Slope","FDR Significant",
+            "FDR Significant & Slope"),
+        ## select labels to show
+        # selectLab = c("cg18587484","cg00803922", " cg19425295"),
+        ## point and label size 
+        transcriptPointSize = 2,
+        transcriptLabSize = 3,
+        xlab = bquote("Slope"),
+        ylab = bquote(~-Log[10]~italic(P)),
+        
+        #Modify border and remove gridlines
+        gridlines.major = FALSE,
+        gridlines.minor = FALSE,
+        border = "full",
+        borderWidth = 1.0,
+        borderColour = "black",
+        # the transparence of the dots
+        colAlpha = 0.8,
+   
+        # adjust the legend
+        legendPosition = "bottom",
+        legendLabSize = 9,
+        legendIconSize = 3,
+        # connectors
+        DrawConnectors = TRUE,
+        # 
+        widthConnectors = 0.2,
+        # 
+        colConnectors = "grey40",
+        col = c("grey30", "forestgreen", "royalblue", "tomato")
+        )
+  ggsave(paste("Volcanol_Plot_IFNBeta_", cliname, sep = ""), width = 6, height = 9, device = "tiff", path = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/Reports/plots", dpi = 300)
+  } else{print("No Sig.")}
+ 
+ 
+  
+  ## positive prop
+  isgs.pos.no = sum(lin_res_isgs$results$Estimate > 0)
+  genesbeta.pos.no = sum(lin_res_genesbeta$results$Estimate > 0)
+   if( (isgs.pos.no >= 5) & (genesbeta.pos.no >= 5) ){
+    prop.test.pos = prop.test(x = c(isgs.pos.no, genesbeta.pos.no), n = c(nisgs, ngenesbeta), correct = FALSE)
+    pos.p = prop.test.pos$p.value
+  }else{
+    prop.test.pos = prop.test(x = c(isgs.pos.no, genesbeta.pos.no), n = c(nisgs, ngenesbeta), correct = TRUE)
+    pos.p = prop.test.pos$p.value
+  }
+  ## If you check prop.test, chisq.test and z-test on your data then they all give you the same p-value
+  ## continuity correction if anyone less than 5
+  ## the clinical summary table 
+  clinical_sum[i, ] <- c(lin_res_genesbeta$clinical, lin_res_genesbeta$size,
+                         isgs.sig.no/nisgs, genesbeta.sig.no/ngenesbeta , sig.p, 
+                         isgs.pos.no/nisgs,
+                         genesbeta.pos.no/ngenesbeta , pos.p)
+  
+  colnames(clinical_sum) <- c("Clinical Parameter", "Sample Size", "ISGs: Sig. Prop.",
+                              "IFNbeta Genes: Sig.", "p value",
+                              "ISGs: Positive Corr. Prop.",
+                              "IFNbeta Genes: Pos.", "p value (Pos)")
+}
+
+
+## clinical_sum
+write.xlsx(clinical_sum, "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/clinical_summary.xlsx")
+clinical_sum[,c(3,4,6,7)] <- round(as.numeric( as.character( clinical_sum[,c(3,4,6,7) ]) ), 4)
+clinical_sum[,c(5,8)] <- format(as.numeric( as.character( clinical_sum[,c(5,8) ]) ), digits = 3, scientific = TRUE)
+clinical_sum[12:13,1] <- c("IFNalpha", "IFNbeta")
+kable(data.frame(clinical_sum[,c(1:5)]), digits = c(2,2,4,4,40))
+kable(data.frame(clinical_sum[,c(1,2,6:8)]), digits = c(2,2,4,4,40))
+
+
 ```
+
+
 # Reference
 1. Biomed Res Int.2015 Jun 15. doi: 10.1155/2015/621690, The Impact of Normalization Methods on RNA-Seq Data Analysis, J. Zyprych-Walczak, A. Szabelska, L. Handschuh, K. Górczak, K. Klamecka, M. Figlerowicz, and I. Siatkowski
 
