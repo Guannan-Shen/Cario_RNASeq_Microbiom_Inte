@@ -77,6 +77,7 @@ cnts_fsym <- cnts[rowSums(cnts[, 1:32])>=(5*ncol(cnts[, 1:32])), ]
 ngenes <- nrow(cnts_fsym)
 paste("The number of remaining genes: ", ngenes, sep = '')
 # all integer in cnts_f
+######## filtered counts table ############## 
 cnts_f <- as.matrix(cnts_fsym[, 1:32])
 
 ############ setup for EDA ##########
@@ -85,4 +86,23 @@ set <- newSeqExpressionSet(as.matrix(cnts_f),
                            phenoData = data.frame(condition=as.factor(pheno$txt),
                                                   row.names=colnames(cnts_f)))
 
-
+######### setup for scater plots #########
+## cnts. list
+cnts.list <- list(cnts_f, cnts.edger, cnts.deseq2, cnts.tpm)
+cnts.names <- c("Filtered Counts", "TMM Normalized Counts",
+                "DESeq2 Normalized Counts", "TPM Normalized Counts")
+for (i in 1:4){
+  j  = cnts.list[[i]]
+  ## using scater, start with an object
+  example_sce <- SingleCellExperiment(
+    assays = list(counts = j),
+    colData = rna_info)
+  ## RLE plots
+  print( scater::plotRLE(example_sce, exprs_values = "counts", exprs_logged = FALSE,
+                         colour_by = "Group", style = "minimal") + scale_x_discrete("Samples", labels = rna.pid) + labs(caption = paste("RLE Plot:" ,cnts.names[i]) ) )
+  ## pca plots
+  example_sce <- SingleCellExperiment(
+    assays = list(logcounts = j),
+    colData = rna_info)
+  print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
+}
