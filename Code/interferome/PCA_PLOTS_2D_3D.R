@@ -105,7 +105,12 @@ plot(cnts.f.pca)
 ### from here, a new set of variable formed by the linear combination of original variables, such as pc1, pc2
 ## the pca plot is the value of each sample on the axis of different pcs 
 
-
+############## cnts.f cnts.f.pca$rotation #######
+## cnts.f.pca$rotation is the decomposition of ecah pc components at the gene level
+# add the gene symbol
+f.pca.symbol <- cnts.f.pca$rotation
+row.names(f.pca.symbol) <- cnts_fsym$Symbol
+f.pca.symbol <- as.matrix(f.pca.symbol)
 ############## cnts.f.pca$sdev, ###########
 ## a vector contains s.d. for each principal components,
 ## from here, calculate the percentage of variance holded by each pcs
@@ -115,18 +120,32 @@ cnts.f.sd <- ( cnts.f.pca$sdev/sum(cnts.f.pca$sdev) )* 100
 pc <- colnames(cnts.f.pca$x)
 
 ## ggplot2 to check the % of variance pca analysis 
+# Horizontal bar plot
 pc.f.sd <- data.frame(PCs = pc,
                       Variance = cnts.f.sd)
 
-p <- ggplot(data=pc.f.sd, aes(x=1:length(pc), y=Variance)) +
+p.var.f <- ggplot(data=pc.f.sd, aes(x=1:length(pc), y=Variance)) +
    geom_bar(stat="identity", fill = "Black") +
    ylab("% Variance") +
-   scale_x_continuous(name = "Principal components", breaks = 1:)
+   scale_x_continuous(name = "Principal components", breaks = 1:length(pc),
+                      labels = pc)  +
+  # Horizontal bar plot
    coord_flip() +
    theme_bw()
-p
 
-# Horizontal bar plot
+p.var.f
+
+## pc1 vs pc2
+c("Healthy Controls", "HIV-Infected")
+
+pca12.f <- ggplot(data = data.frame(cnts.f.pca$x), aes(x = PC1, y = PC2)) +
+        geom_point() +
+        theme_bw()
+pca12.f
+  
+
+
+
 
 
 
