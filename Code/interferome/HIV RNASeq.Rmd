@@ -1016,6 +1016,8 @@ dim(res.edger.05.1)
 ############################ core ISGs#############################
 isgs.edger.05 <- base::merge(res.edger.05, isgs, by = "Gene_ID") 
 dim(isgs.edger.05)
+write.csv(isgs.edger.05,
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.edger.05.csv")
 
 isgs.edger.05.1 <- base::merge(res.edger.05.1, isgs, by = "Gene_ID") 
 dim(isgs.edger.05.1)
@@ -1069,6 +1071,8 @@ EnhancedVolcano(isgs.edger.05 ,
 ## directions of regulation 
 genesbeta.edger.05 <- base::merge(res.edger.05, genesbeta, by = "Gene_ID") 
 dim(genesbeta.edger.05)
+write.csv(genesbeta.edger.05,
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.edger.05.csv")
 
 genesbeta.edger.05.1 <- base::merge(res.edger.05.1, genesbeta, by = "Gene_ID")
 dim(genesbeta.edger.05.1)
@@ -1446,13 +1450,17 @@ isgs.05.lin <- t(var.isgs.05[2:33])
 base::colnames(isgs.05.lin) <- var.isgs.05$Symbol
 
 head(isgs.05.lin)
-
+write.csv(isgs.05.lin,
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.05.lin.csv")
+           
 var.genesbeta.05 <- base::merge(var.rld, genesbeta.edger.05, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% select(-c(Symbol.x, Symbol.y))
 dim(var.genesbeta.05)
 
 genesbeta.05.lin <- t(var.genesbeta.05[2:33])
 base::colnames(genesbeta.05.lin) <- var.genesbeta.05$Symbol
 head(genesbeta.05.lin)
+write.csv(genesbeta.05.lin,
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.05.lin.csv")
 
 ################### make clinical as the same pid order of gene #################
 ## not the same order
@@ -1463,7 +1471,9 @@ sum(isgs.rld.lin$age == clinical$age)
 ## 
 isgs.05.lin.order <- data.frame(isgs.05.lin) %>% dplyr::mutate(pid = row.names(isgs.05.lin))
 clinical_order <- base::merge(clinical, isgs.05.lin.order, by = "pid")
-clinical_order <- clinical_order[,1:18]
+clinical_order <- clinical_order[,c(1:18,24)]
+write.csv(clinical_order,
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/clinical_order.csv")
 
 ## clinical_order$pid == row.names(isgs.05.lin)
 
@@ -1680,7 +1690,6 @@ clinical_sum[,c(5,8)] <- format(as.numeric( as.character( clinical_sum[,c(5,8) ]
 clinical_sum[12:13,1] <- c("IFNalpha", "IFNbeta")
 kable(data.frame(clinical_sum[,c(1:5)]), digits = c(2,2,4,4,40))
 kable(data.frame(clinical_sum[,c(1,2,6:8)]), digits = c(2,2,4,4,40))
-
 
 ```
 
