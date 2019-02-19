@@ -334,8 +334,161 @@ pca12.tpm <- ggplot(data = data.frame(cnts.tpm.pca$x), aes(x = PC1, y = PC2, col
 pca12.tpm
 
 ##################### sig altered genes pca by gene lists ##########################
+cnts.genesbeta.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.genesbeta.edger.05.csv")
+cnts.isgs.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.isgs.edger.05.csv")
+genesbeta.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.edger.05.csv")
+isgs.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.edger.05.csv")
 
 
+cnts.isgs.edger.05.rn <- cnts.isgs.edger.05[,1]
+cnts.isgs.edger.05 <- cnts.isgs.edger.05[,-1]
+rownames(cnts.isgs.edger.05) <- cnts.isgs.edger.05.rn
+sum(isgs.edger.05$Gene_ID != rownames(cnts.isgs.edger.05)) 
 
+cnts.genesbeta.edger.05.rn <- cnts.genesbeta.edger.05[,1]
+cnts.genesbeta.edger.05 <- cnts.genesbeta.edger.05[,-1]
+rownames(cnts.genesbeta.edger.05) <- cnts.genesbeta.edger.05.rn
+sum(genesbeta.edger.05$Gene_ID != rownames(cnts.genesbeta.edger.05)) 
+################ isgs ##################
+cnts.isgs.pca <- prcomp(t(cnts.isgs.edger.05), center = TRUE, scale. = TRUE, retx = TRUE)
+
+isgs.pca.symbol <- cnts.isgs.pca$rotation
+row.names(isgs.pca.symbol) <- isgs.edger.05$Symbol.x
+isgs.pca.symbol <- as.matrix(isgs.pca.symbol)
+############## cnts.isgs.pca$sdev, ###########
+
+cnts.isgs.sd <- ( cnts.isgs.pca$sdev/sum(cnts.isgs.pca$sdev) )* 100
+
+########## pc names ##############
+pc <- colnames(cnts.isgs.pca$x)
+
+## ggplot2 to check the % of variance pca analysis 
+# Horizontal bar plot
+pc.isgs.sd <- data.frame(PCs = pc,
+                        Variance = cnts.isgs.sd)
+
+## pc1 vs pc2
+rownames(cnts.isgs.pca$x) == pheno$pid
+
+pca12.isgs <- ggplot(data = data.frame(cnts.isgs.pca$x), aes(x = PC1, y = PC2, color = pheno$txt)) +
+  geom_point(shape = 19) +
+  xlab(paste("PC1 (", round(pc.isgs.sd$Variance[1],2) ,"%", ")", 
+             sep = "") ) +
+  ylab(paste("PC2 (", round(pc.isgs.sd$Variance[2],2) ,"%", ")", 
+             sep = "") ) +
+  scale_color_manual(values=c("steelblue", "tomato"), 
+                     name="Significant Altered ISGs Genes\n\nGroups",
+                     labels=c("Healthy Control",  "HIV-Infected")
+  ) +
+  stat_ellipse(type = "t", linetype = "solid") +
+  # annotate("text", x = max(df_male[,3])*0.85,
+  #      y = quantile(df_male[,2], 0.95),
+  #      label = paste(cpgname, gender, "M values",sep = "\n")) +
+  theme_bw()
+pca12.isgs
+
+################ genesbeta ##################
+cnts.genesbeta.pca <- prcomp(t(cnts.genesbeta.edger.05), center = TRUE, scale. = TRUE, retx = TRUE)
+
+genesbeta.pca.symbol <- cnts.genesbeta.pca$rotation
+row.names(genesbeta.pca.symbol) <- genesbeta.edger.05$Symbol.x
+genesbeta.pca.symbol <- as.matrix(genesbeta.pca.symbol)
+############## cnts.genesbeta.pca$sdev, ###########
+
+cnts.genesbeta.sd <- ( cnts.genesbeta.pca$sdev/sum(cnts.genesbeta.pca$sdev) )* 100
+
+########## pc names ##############
+pc <- colnames(cnts.genesbeta.pca$x)
+
+## ggplot2 to check the % of variance pca analysis 
+# Horizontal bar plot
+pc.genesbeta.sd <- data.frame(PCs = pc,
+                         Variance = cnts.genesbeta.sd)
+
+## pc1 vs pc2
+rownames(cnts.genesbeta.pca$x) == pheno$pid
+
+pca12.genesbeta <- ggplot(data = data.frame(cnts.genesbeta.pca$x), aes(x = PC1, y = PC2, color = pheno$txt)) +
+  geom_point(shape = 19) +
+  xlab(paste("PC1 (", round(pc.genesbeta.sd$Variance[1],2) ,"%", ")", 
+             sep = "") ) +
+  ylab(paste("PC2 (", round(pc.genesbeta.sd$Variance[2],2) ,"%", ")", 
+             sep = "") ) +
+  scale_color_manual(values=c("steelblue", "tomato"), 
+                     name="Significant Altered IFN-Beta Genes\n\nGroups",
+                     labels=c("Healthy Control",  "HIV-Infected")
+  ) +
+  stat_ellipse(type = "t", linetype = "solid") +
+  # annotate("text", x = max(df_male[,3])*0.85,
+  #      y = quantile(df_male[,2], 0.95),
+  #      label = paste(cpgname, gender, "M values",sep = "\n")) +
+  theme_bw()
+pca12.genesbeta
+
+############ pc1 and linear regression ##############
+clinical_order <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/clinical_order.csv")
+clinical_names <- c("Blood CD4 T Cell Counts (cells/ul)", "Plasma Viral Load", "Tissue HIV RNA (per CD4 T cell)",
+                    "Tissue CD4 T Cell Counts (number/g)", "IL-6 (pg/ml)", "CRP (ug/ml)", "iFABP (pg/ml)",
+                    "sCD27 (U/ml)", "CD14 (ng/ml)", "LPS (pg/ml)", "LTA (OD)", 
+                    base::paste("IFN", '\u03b1', sep = "" ),  base::paste("IFN", '\u03b2', sep = "" ),
+                    ##### Adding this clinical parameter ###########
+                    "CD4 T cells (% viable CD45+ cells)")
+n_clinical <- length(clinical_names)
+########################## linear regression ##############################
+## equal length of outcomes and covariates
+gene_IFNReg <- function(gene_matrix, clinical_variable, clin_var_name){
+  # get names ready
+  genelistname = base::colnames(gene_matrix)
+  ## number of gene to test, also the number of multiple test
+  n_gene = ncol(gene_matrix)
+  ## outcome lm
+  outcome_lm = lapply(1:n_gene, function(i){
+    lm = lm(gene_matrix[,i]~ clinical_variable + clinical_order$age + clinical_order$sex )
+    coef = summary(lm)$coefficients[2, ]
+    return(coef)
+  })
+  outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
+                                 dimnames = list(
+                                   c(colnames(gene_matrix)),
+                                   c("Estimate", "Std.Error", "t.statistic", "p.value"))))
+  
+  # adjusted p-value
+  outcome_lm =  outcome_lm %>% 
+    dplyr::mutate(FDR = p.adjust(p.value, "BH", n_gene ),
+                  names = colnames(gene_matrix)) %>% 
+    dplyr::mutate(Estimate = round(Estimate, 10),
+                  Std.Error = round(Std.Error, 10),
+                  t.statistic = round(t.statistic,4)
+    )%>% 
+    select(names, everything())
+  # sort by p.value
+  outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
+  
+  ## sample size 
+  size = sum(!is.na(clinical_variable))
+  
+  ## summary table 
+  return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
+}
+
+### 
+cnts.genesbeta.pca$x[,1]
+sum(clinical_order$pid != rownames(cnts.genesbeta.pca$x) )
+clinical_order <- clinical_order[,-1]
+########## pc1 ############
+for(i in 1:n_clinical) {
+  ## number of clinical virable
+  j = c(6:19)[i]
+  cliname = base::colnames(clinical_order)[j]
+  ## linear regression
+  lin_res_isgs = gene_IFNReg(as.matrix(cnts.isgs.pca$x[,1]), clinical_order[,j], clinical_names[i])
+  lin_res_genesbeta = gene_IFNReg(as.matrix(cnts.genesbeta.pca$x[,1]), clinical_order[,j], clinical_names[i])
+  ## save data
+  
+  write.csv(lin_res_isgs$results, "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs_pc1.csv",
+            row.names =  F)
+  write.csv(lin_res_genesbeta$results, "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta_pc1.csv",
+            row.names =  F)
+}
 
 

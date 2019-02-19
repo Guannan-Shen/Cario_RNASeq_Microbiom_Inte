@@ -157,10 +157,25 @@ n_clinical <- length(clinical_names)
 clinical_sum <- matrix(NA, 14, 8)
 
 ########### read in altered gene edger data and result ######
-
+genesbeta.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.edger.05.csv")
+isgs.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.edger.05.csv")
+cnts.isgs.edger.05 <- cnts.edger[ rownames(cnts.edger) %in% isgs.edger.05$Gene_ID, ]
+dim(cnts.isgs.edger.05)
+write.csv(cnts.isgs.edger.05,
+          "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.isgs.edger.05.csv")
+cnts.genesbeta.edger.05 <- cnts.edger[ rownames(cnts.edger) %in% genesbeta.edger.05$Gene_ID, ]
+dim(cnts.genesbeta.edger.05)
+write.csv(cnts.genesbeta.edger.05,
+          "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.genesbeta.edger.05.csv")
 ##### vocalno plots for all gene list DE compare ###
 
 ############# read in clinical_order and gene rlog data
+clinical_order <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/clinical_order.csv")
+isgs.05.lin <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.05.lin.csv")
+genesbeta.05.lin <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.05.lin.csv")
+clinical_order <- clinical_order[,-1]
+isgs.05.lin <- isgs.05.lin[,-1]
+genesbeta.05.lin <- genesbeta.05.lin[,-1]
 
 ########################## linear regression ##############################
 ## equal length of outcomes and covariates
@@ -218,7 +233,7 @@ for(i in 1:n_clinical) {
   write.xlsx(lin_res_genesbeta$results,
              paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/ifnbeta_", cliname,".xlsx", sep = ""),
              sheetName= paste("ifnbeta_", cliname, sep = ""))
-  
+  # }
   ## check basic
   if(lin_res_isgs$size == lin_res_genesbeta$size){
     print("Good")
