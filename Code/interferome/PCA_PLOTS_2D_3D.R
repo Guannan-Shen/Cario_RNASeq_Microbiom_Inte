@@ -37,9 +37,9 @@ packageVersion("edgeR")
 
 ######## set wd #############
 ## ubuntu 
-setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+## setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
 ## Asus
-## setwd("C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+setwd("C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
 getwd()
 
 #########################################################
@@ -334,10 +334,14 @@ pca12.tpm <- ggplot(data = data.frame(cnts.tpm.pca$x), aes(x = PC1, y = PC2, col
 pca12.tpm
 
 ##################### sig altered genes pca by gene lists ##########################
-cnts.genesbeta.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.genesbeta.edger.05.csv")
-cnts.isgs.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.isgs.edger.05.csv")
-genesbeta.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.edger.05.csv")
-isgs.edger.05 <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.edger.05.csv")
+# ## Asus
+setwd("C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/")
+## ubuntu 
+## setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+cnts.genesbeta.edger.05 <- read.csv("corr/cnts.genesbeta.edger.05.csv")
+cnts.isgs.edger.05 <- read.csv("corr/cnts.isgs.edger.05.csv")
+genesbeta.edger.05 <- read.csv("corr/genesbeta.edger.05.csv")
+isgs.edger.05 <- read.csv("corr/isgs.edger.05.csv")
 
 
 cnts.isgs.edger.05.rn <- cnts.isgs.edger.05[,1]
@@ -426,7 +430,9 @@ pca12.genesbeta <- ggplot(data = data.frame(cnts.genesbeta.pca$x), aes(x = PC1, 
 pca12.genesbeta
 
 ############ pc1 and linear regression ##############
-clinical_order <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/clinical_order.csv")
+
+
+clinical_order <- read.csv("corr/clinical_order.csv")
 clinical_names <- c("Blood CD4 T Cell Counts (cells/ul)", "Plasma Viral Load", "Tissue HIV RNA (per CD4 T cell)",
                     "Tissue CD4 T Cell Counts (number/g)", "IL-6 (pg/ml)", "CRP (ug/ml)", "iFABP (pg/ml)",
                     "sCD27 (U/ml)", "CD14 (ng/ml)", "LPS (pg/ml)", "LTA (OD)", 
@@ -470,25 +476,85 @@ gene_IFNReg <- function(gene_matrix, clinical_variable, clin_var_name){
   ## summary table 
   return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
 }
+######## diagnosis
+hist(cnts.isgs.pca$x[,1])
+hist(cnts.genesbeta.pca$x[,1])
+hist( (cnts.isgs.pca$x[,1])^(1/3)  )
+hist(exp(cnts.isgs.pca$x[,1]))
+hist(exp(cnts.genesbeta.pca$x[,1]))
+
 
 ### 
 cnts.genesbeta.pca$x[,1]
 sum(clinical_order$pid != rownames(cnts.genesbeta.pca$x) )
 clinical_order <- clinical_order[,-1]
+n_clinical
+pc1_sum <- matrix(NA, 28, 4)
+
 ########## pc1 ############
 for(i in 1:n_clinical) {
   ## number of clinical virable
   j = c(6:19)[i]
-  cliname = base::colnames(clinical_order)[j]
   ## linear regression
-  lin_res_isgs = gene_IFNReg(as.matrix(cnts.isgs.pca$x[,1]), clinical_order[,j], clinical_names[i])
-  lin_res_genesbeta = gene_IFNReg(as.matrix(cnts.genesbeta.pca$x[,1]), clinical_order[,j], clinical_names[i])
-  ## save data
+  ## isgs 
+  lm.isgs = lm(as.matrix(cnts.isgs.pca$x[,1]) ~ clinical_order[,j] + clinical_order$age + clinical_order$sex )
+  coef.isgs = summary(lm.isgs)$coefficients[2, ]
+  ## result
+  pc1_sum[i,1] = clinical_names[i]
+  pc1_sum[i,2] = "ISGs"
+  pc1_sum[i,3] = coef.isgs[4]
+  pc1_sum[i,4] = ifelse(coef.isgs[1] > 0, "Positive Correlation", "Negative Correlation")
   
-  write.csv(lin_res_isgs$results, "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs_pc1.csv",
-            row.names =  F)
-  write.csv(lin_res_genesbeta$results, "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta_pc1.csv",
-            row.names =  F)
+  
+  ## genesbeta      
+  lm.genesbeta = lm(as.matrix(cnts.genesbeta.pca$x[,1]) ~ clinical_order[,j] + clinical_order$age + clinical_order$sex )
+  coef.genesbeta = summary(lm.genesbeta)$coefficients[2, ]
+  ## 
+  pc1_sum[(i + 14),1] = clinical_names[i]
+  pc1_sum[(i + 14),2] = "IFN-Beta Genes"
+  pc1_sum[(i + 14),3] = coef.genesbeta[4]
+  pc1_sum[(i + 14),4] = ifelse(coef.genesbeta[1] > 0, "Positive Correlation", "Negative Correlation")
+  
+  ## save data
+  colnames(pc1_sum) = c("Clinical Parameters", "Gene Lists",
+                        "p-value", "Correlation Directionality")
+
 }
+write.csv(pc1_sum, "corr/pc1_sum.csv", row.names = F)
+pc1_sum <- as.data.frame(pc1_sum)
+pc1_sum$`p-value` <- as.numeric(pc1_sum$`p-value`)
+
+## diagnosis
 
 
+
+## heatmap 
+## p-value
+pc1_sum$pc1.p <- ifelse(round(pc1_sum$`p-value`,2) ==0 ,  0.01,  round(pc1_sum$`p-value`,2))
+pc1_sum$pc1.p.direc <- ifelse(pc1_sum$`Correlation Directionality` =="Positive Correlation" ,  
+                              pc1_sum$pc1.p,  -pc1_sum$pc1.p)
+
+
+ggplot(data = pc1_sum, aes(x=`Clinical Parameters`, y= `Gene Lists`, fill= `p-value` ) ) + 
+  geom_tile(size = 1, aes(colour = `Correlation Directionality`)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                   size = 10, hjust = 1)) +
+  coord_fixed() +
+  xlab("") +
+  ylab("") +
+  scale_fill_gradient2(low = "red", high = "white", mid = "grey85", 
+                       midpoint = 0.20, limit = c(0,1), space = "Lab", 
+                     name="p-value: \nCorrelation with PC1") +
+  scale_color_discrete(name = "") +
+# +
+#   scale_fill_gradient2(low = "white", high = "steelblue", mid = "grey85", 
+#                        midpoint = 0.-20, limit = c(-1,0), space = "Lab", 
+#                        name="p-value: \nCorrelation with PC1") 
+geom_text(aes(`Clinical Parameters`, `Gene Lists`, label = pc1.p ) , color = "black", size = 3) 
+
+  ggsave("pc1_sum.tiff", width = 8, height = 6)
+  
+
+
+  
