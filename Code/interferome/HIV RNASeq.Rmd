@@ -351,6 +351,8 @@ plotCounts(dds, gene=which.min(res$padj), intgroup="condition")
 ## DE analysis of edger
 y <- estimateDisp(y)
 et <- exactTest(y, pair = 1:2)
+dim(et)
+
 ### results
 topTags(et, n = 10, adjust.method = "BH")
 head(et$table)
@@ -372,8 +374,10 @@ colnames(et$table)
 res.edger <- et$table %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
                                  FDR = p.adjust(et$table$PValue, method = "BH") )
 rownames(res.edger) <- rownames(et$table)
-
-
+head(res.edger)
+write.csv(res.edger,
+          "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/res.edger.csv",
+          row.names = F)
 ## plot counts, with source code from plotCounts()
 group.plot <- factor(c(rep(1,13), rep(2,19)), labels = c("Health Control", "HIV Infected"))
 ## plot counts

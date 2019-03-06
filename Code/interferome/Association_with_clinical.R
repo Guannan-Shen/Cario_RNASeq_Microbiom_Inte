@@ -109,6 +109,17 @@ y <- DGEList(counts= as.matrix(cnts_f), group=group)
 ## normalization 
 y <- calcNormFactors(y, method = "TMM")
 cnts.edger <- edgeR::cpm(y)
+sum(cnts.edger < 0)
+# get the log2 counts
+cnts.edger.log2 <- apply(cnts.edger, 2, function(col) log2(col) )
+sum(row.names(cnts_fsym) != row.names(cnts.edger.log2))
+
+dim(cnts.edger.log2)
+cnts.TMM.log2 <- data.frame(cnts.edger.log2) %>% dplyr::mutate(Gene_ID = row.names(cnts_fsym),
+                                                   Symbol = cnts_fsym$Symbol )
+write.csv(cnts.TMM.log2,
+          "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/cnts.TMM.log2.csv",
+          row.names = F)
 ################### DE analysis by edger ################
 y <- estimateDisp(y)
 et <- exactTest(y, pair = 1:2)
