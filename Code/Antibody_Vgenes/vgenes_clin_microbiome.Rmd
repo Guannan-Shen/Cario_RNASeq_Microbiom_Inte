@@ -1,0 +1,294 @@
+---
+title: "Vgenes clinical and microbiome"
+author: "Guannan Shen"
+date: "March 18, 2019"
+output: 
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+---
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/Vgenes/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+
+```{r libs}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(edgeR)
+library(EDASeq)
+library(DESeq2)
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(stats)
+library(readxl)
+library(openxlsx)
+# multiple testing
+library(mutoss)
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+```{r importdata}
+#remapping Hi-seq2 with moderate threshold
+############## rna-seq cnts data ##################
+cnts_raw <- read_excel("HIV_Infected_vs_Uninfected_relaxed_mapping_geneCounts.xlsx")
+head(cnts_raw)
+
+############ v genes lists ###################
+vgenes <- read_excel("/home/guanshim/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/Vgenes_list.xlsx")
+head(vgenes)
+######clinical and microbiome data #########
+clin_micro <- read_excel("/home/guanshim/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/clinical_Microbiome_pre.xlsx")
+head(clin_micro)
+sample_size <- length(clin_micro$pid)
+sample_size
+# global regular expression
+########### test all ids in the clin_micro
+idtest <- 1:sample_size
+for (i in 1:sample_size){
+idtest[i] <- (grepl(clin_micro$pid[i], clin_micro$ID[i], fixed = T) == T )
+}
+idtest
+ids <- paste("id",as.character(1:10), sep = '')
+for (i in ids) {
+idtest[i] <- sum(clin_micro$ID != clin_micro[, colnames(clin_micro) == i ] )
+}
+idtest
+for (i in 1:sample_size){
+idtest[i] <- (grepl(clin_micro$pid[i], clin_micro$ids1[i], fixed = T) == F )
+}
+idtest
+for (i in 1:sample_size){
+idtest[i] <- (grepl(clin_micro$pid[i], clin_micro$ids2[i], fixed = T) == T )
+}
+idtest
+for (i in 1:sample_size){
+idtest[i] <- (grepl(clin_micro$pid[i], clin_micro$ids3[i], fixed = T) == F )
+}
+idtest
+## test the ids between rna-seq and clin microbiome data
+sum( colnames(cnts_raw)[-c(1:3)] != clin_micro$pid )
+
+# The values are 
+# relative abundance (%) of total bacteria for everything except the species which is % of classified species. 
+
+
+```
+
+```{r dataprocessed}
+## filter to guarantee cnts larger than 1 
+cnts_fsym <- cnts_raw[rowSums(as.matrix(cnts_raw[, -c(1:3)]) )>=(3*ncol(cnts_raw[, 1:32])), ]
+## processing of rnaseq data
+cnts <- cnts_fsym %>% dplyr::select(-c(Symbol, Length ) ) %>% tibble::column_to_rownames("Gene_ID")
+cnts <- as.matrix(cnts)
+dim(cnts)
+pheno <- data.frame(pid = colnames(cnts), txt = as.factor(c(rep("Control", 13), 
+                                                     rep("HIV", 19)
+                                                     )) )
+pheno$txt %<>% relevel("Control")
+## create EDAseq set
+set <- newSeqExpressionSet( as.matrix(cnts),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts) ) )
+## deseq2 and rlog transfer
+## now using deseq2
+register(MulticoreParam(6))
+dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ condition)
+dds <- estimateSizeFactors(dds)
+## normalization factors
+sizeFactors(dds)
+## The more the size factors differ, the more residual dependence of the variance on the mean will be found in the transformed data. rlog is a transformation which can perform better in these cases.
+rld <- rlog(dds, blind = FALSE, fitType = "parametric")
+cnts_rld <- assay(rld)
+apply(cnts_rld, 2, function(x) sum( x < 0 ) )
+# ## check previous rlg data 
+# rlgold <- read_excel("/home/guanshim/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/rlog_counts_linear_regression.xlsx")
+# apply(as.matrix(rlgold[,-c(1,2)]), 2, function(x) sum(is.negative(x)) )
+# all old rlg data are positive 
+## check id
+sum(row.names(cnts_rld) != cnts_fsym$Gene_ID)
+sum(colnames(cnts_rld) != clin_micro$pid)
+cnts_rld <- data.frame(cnts_rld) %>% mutate(Symbol = cnts_fsym$Symbol,
+                                Gene_ID = cnts_fsym$Gene_ID) %>% select(Gene_ID, Symbol, everything())
+head(cnts_rld)
+rld_pos <-  cnts_rld[ apply(as.matrix(cnts_rld[,-c(1:2)]), 1, function(x) !(any(x <= 0  ) ) ), ]
+dim(cnts_raw)
+dim(rld_pos)
+colnames(rld_pos)[-c(1,2)] <- clin_micro$ID
+write.xlsx(rld_pos,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/remapping_allpositive_rld.xlsx",
+           sheetName="Positive rld transformed counts")
+vgenes_rld <- merge(vgenes, rld_pos, by.x = "Vsymbols", by.y = "Symbol" )
+kable(vgenes_rld[,c(1,3)], caption = "45 V genes in the RNAseq data")
+nrow(vgenes_rld)
+write.xlsx(vgenes_rld,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/vgenes_rld.xlsx",
+           sheetName="Vgenes")
+vgenes_rnaseq <- vgenes_rld %>% select(-Num, -Gene_ID, -Type) %>% 
+                             tibble::column_to_rownames("Vsymbols") %>% t(.) 
+vgenes_rnaseq <- data.frame(vgenes_rnaseq)
+vgenes_rnaseq$HIV <-  clin_micro$HIV
+vgenes_rnaseq$ID <- clin_micro$ID
+dim(vgenes_rnaseq)
+write.xlsx(vgenes_rnaseq,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/vgenes_rnaseq.xlsx",
+           sheetName="vgenes linear regression")
+paste("There are 45 V genes left")
+#################### miseq data ###########################
+## test id
+id_matrix <- matrix(NA, sample_size, 3)
+for (i in c("ids1", "ids2", "ids3")){
+  k <- which( c("ids1", "ids2", "ids3") %in% i )
+  for (j in 1:sample_size){
+    id_matrix[j,k] <- unlist(strsplit(as.character(clin_micro[j, colnames(clin_micro) == i]), "_", fixed =T))[1]
+  }
+}
+id_matrix <- as.matrix(id_matrix)
+apply(id_matrix, 2, function(x) sum(x != clin_micro$pid) )
+miseq <- clin_micro %>% select(ID, HIV, iga_smu, igk_smu, igl_smu)
+head(miseq)
+write.xlsx(miseq,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/miseq.xlsx",
+           sheetName="miseq linear regression")
+#################### clinical and microbiome covariate ################
+Xs <- clin_micro %>% select(-c(ids,"pid", "num", "ids1", "ids2", "ids3", "iga_smu", "igk_smu", "igl_smu" ) )
+Xs[Xs$HIV == "yes", 19:62] <-  Xs[Xs$HIV == "yes", 19:62]/100
+clinical_names <- colnames(Xs)[5:18]
+dim(Xs)
+# classes of microbiome
+phylum <- colnames(Xs)[1:9 + 18]
+phylum
+family <- colnames(Xs)[10:20 + 18]
+genus <- colnames(Xs)[21:28 + 18]
+species <- colnames(Xs)[29:44 + 18]
+write.xlsx(Xs,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/clin_microbiome.xlsx",
+           sheetName="clinical and microbiome")
+```
+
+```{r rnaseqcorr}
+# vgenes_rnaseq as the outcome 
+
+########################## linear regression ##############################
+## equal length of outcomes and covariates
+seq_Reg <- function(gene_matrix, clinical_variable, clin_var_name){
+  # get names ready
+  genelistname = base::colnames(gene_matrix)
+  ## number of gene to test, also the number of multiple test
+  n_gene = ncol(gene_matrix)
+  ## outcome lm
+  outcome_lm = lapply(1:n_gene, function(i){
+  lm = lm(gene_matrix[,i]~ clinical_variable + clinical_order$age + clinical_order$sex )
+  coef = summary(lm)$coefficients[2, ]
+  return(coef)
+})
+   outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
+                          dimnames = list(
+                     c(colnames(gene_matrix)),
+                        c("Estimate", "Std.Error", "t.statistic", "p.value"))))
+
+   # adjusted p-value
+    outcome_lm =  outcome_lm %>% 
+                              dplyr::mutate(FDR = p.adjust(p.value, "BH", n_gene ),
+                                               names = colnames(gene_matrix)) %>% 
+                                               dplyr::mutate(Estimate = round(Estimate, 10),
+                                                      Std.Error = round(Std.Error, 10),
+                                                      t.statistic = round(t.statistic,4)
+                                                      )%>% 
+                                               select(names, everything())
+   # sort by p.value
+    outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
+ 
+   ## sample size 
+    size = sum(!is.na(clinical_variable))
+
+   ## summary table 
+   return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
+}
+
+
+n_clinical <- length(clinical_names)
+n_clinical
+clinical_sum <- matrix(NA, 13,8)
+for(i in 1:n_clinical) {
+  ## number of clinical virable
+  j = c(6:18)[i]
+  cliname = base::colnames(clinical_order)[j]
+  ## linear regression
+  lin_res_isgs = gene_IFNReg(isgs.05.lin, clinical_order[,j], clinical_names[i])
+  lin_res_genesbeta = gene_IFNReg(genesbeta.05.lin, clinical_order[,j], clinical_names[i])
+  ## save data
+ 
+  write.xlsx(lin_res_isgs$results,
+            paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/isgs_", cliname,".xlsx", sep = ""),
+           sheetName= paste("ISGs_", cliname, sep = "") )
+  write.xlsx(lin_res_genesbeta$results,
+            paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/ifnbeta_", cliname,".xlsx", sep = ""),
+           sheetName= paste("ifnbeta_", cliname, sep = ""))
+  
+  ## check basic
+  if(lin_res_isgs$size == lin_res_genesbeta$size){
+    print("Good")
+  }else stop("sample size wrong")
+  if(lin_res_isgs$clinical == lin_res_genesbeta$clinical){
+    print("Good")
+  }else stop("clinical parameter wrong")
+  ## number of genes
+  nisgs = nrow(lin_res_isgs$results)
+  ngenesbeta = nrow(lin_res_genesbeta$results)
+  ################## summary table ###################
+  ###  sig prop
+  isgs.sig.no =  sum(lin_res_isgs$results$FDR <= 0.05)
+  genesbeta.sig.no =  sum(lin_res_genesbeta$results$FDR <= 0.05)
+  if( (isgs.sig.no >= 5) & (genesbeta.sig.no >= 5) ){
+    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = FALSE)
+    sig.p = prop.test.sig$p.value
+  }else{
+    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = TRUE)
+    sig.p = prop.test.sig$p.value
+  }
+}
+
+```
+
+```{r miseqcorr}
+# miseq data miseq as the outcome
+
+```
