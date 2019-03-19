@@ -156,8 +156,8 @@ write.xlsx(rld_pos,
            "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/remapping_allpositive_rld.xlsx",
            sheetName="Positive rld transformed counts")
 vgenes_rld <- merge(vgenes, rld_pos, by.x = "Vsymbols", by.y = "Symbol" )
-kable(vgenes_rld[,c(1,3)], caption = "45 V genes in the RNAseq data")
-nrow(vgenes_rld)
+kable(vgenes_rld[,c(1,3)], caption = paste(nrow(vgenes_rld), " V genes in the RNAseq data", sep = "") )
+
 write.xlsx(vgenes_rld,
            "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/vgenes_rld.xlsx",
            sheetName="Vgenes")
@@ -204,87 +204,46 @@ write.xlsx(Xs,
 ```
 
 ```{r rnaseqcorr}
-# vgenes_rnaseq as the outcome 
-
-########################## linear regression ##############################
-## equal length of outcomes and covariates
-seq_Reg <- function(gene_matrix, clinical_variable, clin_var_name){
-  # get names ready
-  genelistname = base::colnames(gene_matrix)
-  ## number of gene to test, also the number of multiple test
-  n_gene = ncol(gene_matrix)
-  ## outcome lm
-  outcome_lm = lapply(1:n_gene, function(i){
-  lm = lm(gene_matrix[,i]~ clinical_variable + clinical_order$age + clinical_order$sex )
-  coef = summary(lm)$coefficients[2, ]
-  return(coef)
-})
-   outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
-                          dimnames = list(
-                     c(colnames(gene_matrix)),
-                        c("Estimate", "Std.Error", "t.statistic", "p.value"))))
-
-   # adjusted p-value
-    outcome_lm =  outcome_lm %>% 
-                              dplyr::mutate(FDR = p.adjust(p.value, "BH", n_gene ),
-                                               names = colnames(gene_matrix)) %>% 
-                                               dplyr::mutate(Estimate = round(Estimate, 10),
-                                                      Std.Error = round(Std.Error, 10),
-                                                      t.statistic = round(t.statistic,4)
-                                                      )%>% 
-                                               select(names, everything())
-   # sort by p.value
-    outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
- 
-   ## sample size 
-    size = sum(!is.na(clinical_variable))
-
-   ## summary table 
-   return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
-}
 
 
-n_clinical <- length(clinical_names)
-n_clinical
-clinical_sum <- matrix(NA, 13,8)
-for(i in 1:n_clinical) {
-  ## number of clinical virable
-  j = c(6:18)[i]
-  cliname = base::colnames(clinical_order)[j]
-  ## linear regression
-  lin_res_isgs = gene_IFNReg(isgs.05.lin, clinical_order[,j], clinical_names[i])
-  lin_res_genesbeta = gene_IFNReg(genesbeta.05.lin, clinical_order[,j], clinical_names[i])
-  ## save data
- 
-  write.xlsx(lin_res_isgs$results,
-            paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/isgs_", cliname,".xlsx", sep = ""),
-           sheetName= paste("ISGs_", cliname, sep = "") )
-  write.xlsx(lin_res_genesbeta$results,
-            paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/ifnbeta_", cliname,".xlsx", sep = ""),
-           sheetName= paste("ifnbeta_", cliname, sep = ""))
-  
-  ## check basic
-  if(lin_res_isgs$size == lin_res_genesbeta$size){
-    print("Good")
-  }else stop("sample size wrong")
-  if(lin_res_isgs$clinical == lin_res_genesbeta$clinical){
-    print("Good")
-  }else stop("clinical parameter wrong")
-  ## number of genes
-  nisgs = nrow(lin_res_isgs$results)
-  ngenesbeta = nrow(lin_res_genesbeta$results)
-  ################## summary table ###################
-  ###  sig prop
-  isgs.sig.no =  sum(lin_res_isgs$results$FDR <= 0.05)
-  genesbeta.sig.no =  sum(lin_res_genesbeta$results$FDR <= 0.05)
-  if( (isgs.sig.no >= 5) & (genesbeta.sig.no >= 5) ){
-    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = FALSE)
-    sig.p = prop.test.sig$p.value
-  }else{
-    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = TRUE)
-    sig.p = prop.test.sig$p.value
-  }
-}
+# for(i in 1:n_clinical) {
+#   ## number of clinical virable
+#   j = c(6:18)[i]
+#   cliname = base::colnames(clinical_order)[j]
+#   ## linear regression
+#   lin_res_isgs = gene_IFNReg(isgs.05.lin, clinical_order[,j], clinical_names[i])
+#   lin_res_genesbeta = gene_IFNReg(genesbeta.05.lin, clinical_order[,j], clinical_names[i])
+#   ## save data
+#  
+#   write.xlsx(lin_res_isgs$results,
+#             paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/isgs_", cliname,".xlsx", sep = ""),
+#            sheetName= paste("ISGs_", cliname, sep = "") )
+#   write.xlsx(lin_res_genesbeta$results,
+#             paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/ifnbeta_", cliname,".xlsx", sep = ""),
+#            sheetName= paste("ifnbeta_", cliname, sep = ""))
+#   
+#   ## check basic
+#   if(lin_res_isgs$size == lin_res_genesbeta$size){
+#     print("Good")
+#   }else stop("sample size wrong")
+#   if(lin_res_isgs$clinical == lin_res_genesbeta$clinical){
+#     print("Good")
+#   }else stop("clinical parameter wrong")
+#   ## number of genes
+#   nisgs = nrow(lin_res_isgs$results)
+#   ngenesbeta = nrow(lin_res_genesbeta$results)
+#   ################## summary table ###################
+#   ###  sig prop
+#   isgs.sig.no =  sum(lin_res_isgs$results$FDR <= 0.05)
+#   genesbeta.sig.no =  sum(lin_res_genesbeta$results$FDR <= 0.05)
+#   if( (isgs.sig.no >= 5) & (genesbeta.sig.no >= 5) ){
+#     prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = FALSE)
+#     sig.p = prop.test.sig$p.value
+#   }else{
+#     prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = TRUE)
+#     sig.p = prop.test.sig$p.value
+#   }
+# }
 
 ```
 

@@ -1,0 +1,536 @@
+---
+title: "Vgenes Mutation Correlation"
+author: "Guannan Shen"
+date: "March 19, 2019"
+output: 
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+---
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+
+```{r libs, echo = FALSE}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(stats)
+library(readxl)
+library(openxlsx)
+# multiple testing
+library(mutoss)
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+
+
+```{r importdata, echo = FALSE}
+############### all V genes #####################
+# rnaseq
+rnaseq <- read_excel( "vgenes_rnaseq.xlsx")
+head(rnaseq)
+dim(rnaseq)
+# rnaseq[rnaseq$HIV == "no", 1:45]
+# rnaseq[rnaseq$HIV == "yes", 1:45]
+# miseq
+miseq <- read_excel( "miseq.xlsx" )
+head(miseq)
+# miseq[miseq$HIV == "no", 3:5]
+# miseq[miseq$HIV == "yes", 3:5]
+# Xs
+Clin <- read_excel("clin_microbiome.xlsx")
+# covariates
+# vgenes
+vgenes <- read_excel("/home/guanshim/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/vgenes_rld.xlsx")
+head(vgenes)
+dim(vgenes)
+head(Clin[,1:4])
+```
+
+```{r correfun, echo = FALSE}
+########################## linear regression ##############################
+## equal length of outcomes and covariates
+seq_Reg <- function(gene_matrix, Clin, clin_var_name){
+  # get names ready
+  genelistname = base::colnames(gene_matrix)
+  ## number of gene to test, also the number of multiple test
+  n_gene = ncol(gene_matrix)
+  clinical_variable = as.matrix(Clin[, colnames(Clin) == clin_var_name])
+  ## outcome lm
+  outcome_lm = lapply(1:n_gene, function(i){
+  lm = lm(gene_matrix[,i]~ clinical_variable + Clin$Age + Clin$Gender )
+  coef = summary(lm)$coefficients[2, ]
+  return(coef)
+})
+   outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
+                          dimnames = list(
+                     c(colnames(gene_matrix)),
+                        c("Estimate", "Std.Error", "t.statistic", "p.value"))))
+
+   # adjusted p-value
+    outcome_lm =  outcome_lm %>% 
+      # https://cran.r-project.org/web/packages/mutoss/mutoss.pdf
+      # The Benjamini-Liu (BL) step-down procedure
+                              dplyr::mutate(FDR = if(n_gene >  15){
+                                                   p.adjust(p.value, "BH", n_gene )
+                                                       } else if (n_gene <= 10) {
+                                                                        p.value
+                                                       } else{
+                                                         BL(p.value, alpha = 0.05, silent = T)$adjPValues
+                                                         },
+                                               names = colnames(gene_matrix)) %>% 
+                                               dplyr::mutate(Estimate = round(Estimate, 10),
+                                                      Std.Error = round(Std.Error, 10),
+                                                      t.statistic = round(t.statistic,4)
+                                                      )%>% 
+                                               mutate(sig = ifelse(FDR  < 0.05, "Sig.", "Non") ) %>%
+                                               select(names, everything())
+   # sort by p.value
+   # outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
+ 
+   ## sample size 
+    size = sum(!is.na(clinical_variable))
+
+   ## summary table 
+   return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
+}
+
+## hiv or not wrapper
+hivornot <- function(gene_matrix, Clin, clin_var_name, HIV){
+  if(missing(HIV)){
+    gene_matrix = gene_matrix %>% select(-HIV, -ID)
+    gene_matrix = as.matrix(gene_matrix)
+    
+    return( list(seq_Reg(gene_matrix, Clin, clin_var_name), HIV = "All Participants" ) )
+  } else if (HIV == 'no'){
+    gene_matrix = gene_matrix %>% filter(HIV == 'no') %>% select(-HIV, -ID)
+    gene_matrix = as.matrix(gene_matrix)
+    
+    Clin = Clin %>% filter(HIV == 'no') %>% select(-HIV, -ID)
+    
+    return(list (seq_Reg(gene_matrix, Clin, clin_var_name), HIV = "Healthy Controls" ))
+  } else if (HIV == 'yes'){
+    gene_matrix = gene_matrix %>% filter(HIV == 'yes') %>% select(-HIV, -ID)
+    gene_matrix = as.matrix(gene_matrix)
+    
+    Clin = Clin %>% filter(HIV == 'yes') %>% select(-HIV, -ID)
+    
+    return(list (seq_Reg(gene_matrix, Clin, clin_var_name), HIV = "HIV Infected") )
+  }
+}
+
+## output summary and plot
+output_sum <- function(output, genelist){
+  # genelist is the name of the genelist 
+  # genelist: "RNAseq" or "MiSeq"
+  # a list of two sublist
+  clinical = output[[1]]$clinical
+  # find a good file name
+  para_name = paste(unlist(strsplit(clinical, " ", fixed = T ))[1:3], collapse = "_")
+  para_name1 = gsub("/", "_", para_name, fixed=T)
+  size = output[[1]]$size
+  hivstatus = output[[2]]
+  input = output[[1]]$results
+  # lm results
+  sig = sum(input$sig == "Sig.")
+  if(sig > 0){
+    write.xlsx(input,
+           paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/", 
+               sep = "", Sys.Date(),"_", para_name1, "_", genelist, hivstatus,"_",".xlsx"),
+           sheetName= paste(hivstatus,sep = "_", genelist ))
+    ############# summary table #####################
+  genes = input$names[input$sig == 'Sig.']
+  fdr = format.pval(input$FDR[input$sig == 'Sig.'], digits=4, eps = 0.0001, scientific = F)
+  p =  format.pval(input$p.value[input$sig == 'Sig.'] ,digits=4, eps = 0.0001, scientific = F)
+  # neg_log10p = -log10(input$p.value[input$sig == 'Sig.'])
+  slope = format(input$Estimate[input$sig == 'Sig.'], digits = 4, scientific = T )
+  sum_a = cbind(clinical, hivstatus, genes, fdr, p, slope, size)
+  colnames(sum_a) = c("Parameter", "HIV Status", "Gene", "Adjusted P", "Raw P", "Slope", "Sample Size")
+  ################## plot ######################
+    if(genelist == "RNAseq"){
+      input1 = input %>% mutate(Chains = vgenes$Type, 
+                         log10p = ifelse(Estimate > 0, -log10(p.value),
+                                                 log10(p.value)))
+     p = ggplot(input1, aes(Chains, log10p, color = sig)) +
+           ylab(expression(paste("-log"[10], "p") ) ) +
+                  theme_minimal() +       
+          coord_flip() +
+          geom_hline(yintercept= 0) +
+          ggtitle(paste(clinical, hivstatus)) +
+          geom_point(aes(shape = Chains ), position = "jitter", size = 3)
+      ggsave(paste(Sys.Date(), "ScatterPlot_RNAseq_", para_name1, "_", hivstatus, "_", sep = ""), width = 6, height = 9, device = "tiff", path = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/Reports/plots", dpi = 300)
+    }else if (genelist == "MiSeq"){
+      input2 = input %>% mutate(Directionality = ifelse(Estimate > 0, "Positive Correlation",
+                                                 "Negative Correlation"))
+          p =   ggplot(input2, aes(names, -log10(p.value), fill = Directionality )) +
+                  geom_bar(stat="identity", width=0.4) +
+                   scale_x_discrete(labels=c("lgA", "lgK", expression(paste("lg", sep = "", lambda)) ) )+
+                 xlab("Single Mutations per Unique Sequence") +
+                 ylab(expression(paste("-log"[10], "p") ) ) +
+                 geom_hline(yintercept= -log10(0.05)) +
+                annotate(geom="text", x=0, y=-log10(0.045), label="                  p = 0.05") +
+                 ggtitle(paste(clinical, hivstatus)) +
+                 guides(fill=guide_legend(title=NULL)) +
+                theme_minimal()
+          ggsave(paste(Sys.Date(), "BarPlot_MiSeq_", para_name1, "_", hivstatus, "_", sep = ""), width = 6, height = 9, device = "tiff", path = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/Reports/plots", dpi = 300)
+    } else{}
+  ##return the summary table ##############
+  return(sum_a)
+  }else{}
+  
+}
+
+```
+
+```{r withClin, echo = FALSE}
+# rnaseq
+## clinical parameters
+clinical_names <- colnames(Clin)[5:18]
+clinical_names
+
+n_clinical <- length(clinical_names)
+############## rna seq ######
+## both
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names[1:12]) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq")
+
+## hiv yes
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names) {
+   output =  hivornot(rnaseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq HIV Infected")
+
+## hiv no
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names[1:12]) {
+   output =  hivornot(rnaseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq Health")
+
+
+############## miseq ######
+## both
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names[1:12]) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq")
+
+## yes
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names) {
+   output =  hivornot(miseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq HIV Infected")
+
+## no
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names[1:12]) {
+   output =  hivornot(miseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq Health")
+# unlist(strsplit(clinical, " ", fixed = T))[1:3]
+
+```
+
+
+
+```{r withMicrobiome, echo = FALSE}
+# classes of microbiome
+phylum <- colnames(Clin)[1:9 + 18]
+family <- colnames(Clin)[10:20 + 18]
+genus <- colnames(Clin)[21:28 + 18]
+species <- colnames(Clin)[29:44 + 18]
+
+############## rna seq ######
+## both
+## phylum
+clinical_sum <- matrix(NA, 0, 7)
+for(i in phylum) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+for(i in family) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+for(i in genus) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+for(i in species) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq species")
+
+######### yes
+clinical_sum <- matrix(NA, 0, 7)
+for(i in phylum) {
+   output =  hivornot(rnaseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+for(i in family) {
+   output =  hivornot(rnaseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+for(i in genus) {
+   output =  hivornot(rnaseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+for(i in species) {
+   output =  hivornot(rnaseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq species")
+
+######### no
+clinical_sum <- matrix(NA, 0, 7)
+for(i in phylum) {
+   output =  hivornot(rnaseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+for(i in family) {
+   output =  hivornot(rnaseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+for(i in genus) {
+   output =  hivornot(rnaseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+for(i in species) {
+   output =  hivornot(rnaseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq species")
+
+
+################## miseq #####################
+
+clinical_sum <- matrix(NA, 0, 7)
+for(i in phylum) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes miseq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+for(i in family) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes miseq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+for(i in genus) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+for(i in species) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq species")
+
+######### yes
+clinical_sum <- matrix(NA, 0, 7)
+for(i in phylum) {
+   output =  hivornot(miseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+for(i in family) {
+   output =  hivornot(miseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+for(i in genus) {
+   output =  hivornot(miseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+for(i in species) {
+   output =  hivornot(miseq, Clin, i, 'yes')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq species")
+
+######### no
+clinical_sum <- matrix(NA, 0, 7)
+for(i in phylum) {
+   output =  hivornot(miseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+for(i in family) {
+   output =  hivornot(miseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+for(i in genus) {
+   output =  hivornot(miseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+for(i in species) {
+   output =  hivornot(miseq, Clin, i, 'no')
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq species")
+
+
+```
