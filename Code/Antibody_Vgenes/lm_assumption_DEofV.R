@@ -124,4 +124,45 @@ write.xlsx(lrt_v ,
           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/Data_generated/DE_vgenes_hiv.xlsx",
            sheetName="Global_DE_age_gender_hiv_Vgenes")
 ########################### check the lm assumption of single mutation  ############################
+library(readxl)
+library(boot)
+setwd("/home/guanshim/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/")
+miseq <- read_excel("miseq.xlsx")
+head(miseq)
+hist(miseq$iga_smu )
+hist(miseq$igk_smu )
+hist(miseq$igl_smu )
+# diagnostic plots 
+# Xs
+Clin <- read_excel("clin_microbiome.xlsx")
+########## iga
+par(mfrow = c(2,2))
+lm = lm(miseq$iga_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender )
+plot(lm, main = "lm: iga smu")
+par(mfrow = c(2,2))
+glmGamma <- glm(miseq$iga_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender, 
+                family = Gamma(link = "log") )
+glm.diag.plots(glmGamma )
+
+########## igk
+par(mfrow = c(2,2))
+lm = lm(miseq$igk_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender )
+plot(lm , main = "lm: igk smu")
+par(mfrow = c(2,2))
+glmGamma <- glm(miseq$igk_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender, 
+                family = Gamma(link = "log") )
+glm.diag.plots(glmGamma )
+############ igl
+par(mfrow = c(2,2))
+lm = lm(miseq$igl_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender )
+plot(lm , main = "lm: igl smu")
+par(mfrow = c(2,2))
+glmGamma <- glm(miseq$igl_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender, 
+                family = Gamma(link = "log") )
+glm.diag.plots(glmGamma )
+
+
+
+
+
 

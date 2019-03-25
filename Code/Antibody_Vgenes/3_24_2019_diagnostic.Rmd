@@ -1,0 +1,87 @@
+---
+title: "lm assumptions"
+author: "Guannan Shen"
+date: "March 24, 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+
+```{r libs, echo = FALSE}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(readxl)
+library(boot)
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+
+```{r diagnostic}
+########################### check the lm assumption of single mutation  ############################
+miseq <- read_excel("miseq.xlsx")
+head(miseq)
+hist(miseq$iga_smu )
+hist(miseq$igk_smu )
+hist(miseq$igl_smu )
+# diagnostic plots 
+# Xs
+Clin <- read_excel("clin_microbiome.xlsx")
+########## iga
+par(mfrow = c(2,2))
+lm = lm(miseq$iga_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender )
+plot(lm, main = "lm: iga smu")
+par(mfrow = c(2,2))
+glmGamma <- glm(miseq$iga_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender, 
+                family = Gamma(link = "log") )
+glm.diag.plots(glmGamma )
+
+########## igk
+par(mfrow = c(2,2))
+lm = lm(miseq$igk_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender )
+plot(lm , main = "lm: igk smu")
+par(mfrow = c(2,2))
+glmGamma <- glm(miseq$igk_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender, 
+                family = Gamma(link = "log") )
+glm.diag.plots(glmGamma )
+############ igl
+par(mfrow = c(2,2))
+lm = lm(miseq$igl_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender )
+plot(lm , main = "lm: igl smu")
+par(mfrow = c(2,2))
+glmGamma <- glm(miseq$igl_smu ~ Clin$`CD4 T cells (% viable)` + Clin$Age + Clin$Gender, 
+                family = Gamma(link = "log") )
+glm.diag.plots(glmGamma )
+
+```
