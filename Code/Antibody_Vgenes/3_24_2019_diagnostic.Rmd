@@ -47,11 +47,13 @@ getwd()
 
 ```
 
+## Single Mutation per Unique Sequences
+
 
 ```{r diagnostic}
 ########################### check the lm assumption of single mutation  ############################
 miseq <- read_excel("miseq.xlsx")
-head(miseq)
+head(miseq, 10)
 hist(miseq$iga_smu )
 hist(miseq$igk_smu )
 hist(miseq$igl_smu )

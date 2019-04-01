@@ -113,7 +113,7 @@ seq_Reg <- function(gene_matrix, Clin, clin_var_name){
     outcome_lm =  outcome_lm %>% 
       # https://cran.r-project.org/web/packages/mutoss/mutoss.pdf
       # The Benjamini-Liu (BL) step-down procedure
-                              dplyr::mutate(FDR = if(n_gene >  15){
+                              dplyr::mutate(FDR = if(n_gene >=  17){
                                                    p.adjust(p.value, "BH", n_gene )
                                                        } else if (n_gene <= 10) {
                                                                         p.value

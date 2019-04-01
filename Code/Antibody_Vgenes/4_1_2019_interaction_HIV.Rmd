@@ -1,0 +1,96 @@
+---
+title: "Correlation Modified by HIV Status"
+author: "Guannan Shen"
+date: "April 1, 2019"
+output: 
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+
+```{r libs, echo = FALSE}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(stats)
+library(readxl)
+library(openxlsx)
+# multiple testing
+library(mutoss)
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+```{r importdata, echo = FALSE}
+############### all V genes #####################
+# rnaseq
+rnaseq <- read_excel( "vgenes_rnaseq.xlsx")
+head(rnaseq)
+dim(rnaseq)
+# rnaseq[rnaseq$HIV == "no", 1:45]
+# rnaseq[rnaseq$HIV == "yes", 1:45]
+# miseq
+miseq <- read_excel( "miseq.xlsx" )
+head(miseq)
+# miseq[miseq$HIV == "no", 3:5]
+# miseq[miseq$HIV == "yes", 3:5]
+# Xs
+Clin <- read_excel("clin_microbiome.xlsx")
+# covariates
+# vgenes
+vgenes <- read_excel("/home/guanshim/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/vgenes_rld.xlsx")
+head(vgenes)
+dim(vgenes)
+head(Clin[,1:6])
+##
+## clinical parameters
+clinical_names <- colnames(Clin)[5:18]
+clinical_names
+
+n_clinical <- length(clinical_names)
+```
+
