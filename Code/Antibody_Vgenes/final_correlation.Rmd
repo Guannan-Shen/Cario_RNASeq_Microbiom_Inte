@@ -161,11 +161,11 @@ hivornot <- function(gene_matrix, Clin, clin_var_name, HIV){
   }
 }
 
-## output summary and plot
+## output summary and plots
 output_sum <- function(output, genelist){
   # genelist is the name of the genelist 
   # genelist: "RNAseq" or "MiSeq"
-  # a list of two sublist
+  # a list of two sublists
   clinical = output[[1]]$clinical
   clinical = gsub("\n", "_", clinical, fixed=T)
   # find a good file name
