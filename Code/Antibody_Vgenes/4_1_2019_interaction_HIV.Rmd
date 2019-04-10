@@ -95,6 +95,9 @@ clinical_names <- colnames(Clin)[5:18]
 clinical_names
 
 n_clinical <- length(clinical_names)
+head(Clin[18:19])
+Clin$ID
+
 ```
 
 ```{r interactionlm}
@@ -232,6 +235,7 @@ output_sum <- function(output, genelist){
 All results of RNAseq are negative.
 
 ```{r run}
+############# with clinical viarable #################
 ############## rna seq ######
 ## both
 clinical_sum <- matrix(NA, 0, 9)
@@ -251,6 +255,14 @@ for(i in clinical_names[1:12]) {
    clinical_sum = rbind(clinical_sum, sum_a)
 }
 kable(clinical_sum, caption = "Vgenes MiSeq")
+
+###################### with Microbiome ############
+# classes of microbiome
+phylum <- colnames(Clin)[1:9 + 18]
+family <- colnames(Clin)[10:20 + 18]
+genus <- colnames(Clin)[21:28 + 18]
+species <- colnames(Clin)[29:44 + 18]
+
 ```
 
 ## Test of the function
