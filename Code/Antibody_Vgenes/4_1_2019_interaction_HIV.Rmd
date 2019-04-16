@@ -100,6 +100,280 @@ Clin$ID
 
 ```
 
+## Correlation between Counts and Clinical parameter, Microbiome: No interaction
+
+```{r correfun, echo = FALSE}
+########################## linear regression ##############################
+## equal length of outcomes and covariates
+seq_Reg <- function(gene_matrix, Clin, clin_var_name){
+  # get names ready
+  genelistname = base::colnames(gene_matrix)
+  ## number of gene to test, also the number of multiple test
+  n_gene = ncol(gene_matrix)
+  clinical_variable = as.matrix(Clin[, colnames(Clin) == clin_var_name])
+  ## outcome lm
+  outcome_lm = lapply(1:n_gene, function(i){
+  lm = lm(gene_matrix[,i]~ clinical_variable + Clin$Age + Clin$Gender )
+  coef = summary(lm)$coefficients[2, ]
+  return(coef)
+})
+   outcome_lm = data.frame(matrix(unlist(outcome_lm), ncol = 4, byrow = TRUE,
+                          dimnames = list(
+                     c(colnames(gene_matrix)),
+                        c("Estimate", "Std.Error", "t.statistic", "p.value"))))
+
+   # adjusted p-value
+    outcome_lm =  outcome_lm %>% 
+      # https://cran.r-project.org/web/packages/mutoss/mutoss.pdf
+      # The Benjamini-Liu (BL) step-down procedure
+                              dplyr::mutate(FDR = if(n_gene >=  17){
+                                                   p.adjust(p.value, "BH", n_gene )
+                                                       } else if (n_gene <= 10) {
+                                                                        p.value
+                                                       } else{
+                                                         BL(p.value, alpha = 0.05, silent = T)$adjPValues
+                                                         },
+                                               names = colnames(gene_matrix)) %>% 
+                                               dplyr::mutate(Estimate = round(Estimate, 10),
+                                                      Std.Error = round(Std.Error, 10),
+                                                      t.statistic = round(t.statistic,4)
+                                                      )%>% 
+                                               mutate(sig = ifelse(FDR  < 0.05, "Sig.", "Non") ) %>%
+                                               select(names, everything())
+   # sort by p.value
+   # outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
+ 
+   ## sample size 
+    size = sum(!is.na(clinical_variable))
+    ################### scatter plot ##########################
+    sig = sum(outcome_lm$sig == "Sig.")
+  if(sig > 0){
+    # get significant genes list 
+    sig_genes = outcome_lm %>% dplyr::filter(sig == "Sig.") %>% select(names)
+    sig_genes = as.vector( unlist(sig_genes))
+    sig_genes_matrix = as.matrix(gene_matrix [, colnames(gene_matrix) %in%  sig_genes ]  )
+    ########## get the right sample size, missing values in clinical, and miseq #########3
+    # length(clinical_variable)  = max(nrow(sig_genes_matrix), length(clinical_variable) )
+    # nrow(sig_genes_matrix) = max(nrow(sig_genes_matrix), length(clinical_variable) )
+    plot_data = cbind(sig_genes_matrix, clinical_variable)
+    colnames(plot_data) = c(sig_genes, clin_var_name)
+    plot_data = data.frame(plot_data) %>% na.omit()
+   for( i in  sig_genes ){
+     ## aes
+      x_clin = as.numeric(plot_data[, ncol(plot_data) ])
+      y_gene = as.numeric(plot_data[, colnames(plot_data) == i]  )
+
+     ## with plotdata
+     p = ggplot(mapping=aes( x = x_clin , 
+                             y =  y_gene  )) +
+    geom_point() + 
+    geom_smooth(method="lm", se=FALSE) + 
+    labs(title=  paste(sep = " ", i, "vs.", clin_var_name ),
+       x =  clin_var_name, y = i  )  +
+
+    theme_minimal()
+    # 
+    print(p)
+    
+   }
+      
+      
+    }else{}
+
+   ## summary table 
+   return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
+}
+
+## hiv or not wrapper
+hivornot <- function(gene_matrix, Clin, clin_var_name, HIV){
+  if(missing(HIV)){
+    gene_matrix = gene_matrix %>% select(-HIV, -ID)
+    gene_matrix = as.matrix(gene_matrix)
+    
+    return( list(seq_Reg(gene_matrix, Clin, clin_var_name), HIV = "All Participants" ) )
+  } else if (HIV == 'no'){
+    gene_matrix = gene_matrix %>% filter(HIV == 'no') %>% select(-HIV, -ID)
+    gene_matrix = as.matrix(gene_matrix)
+    
+    Clin = Clin %>% filter(HIV == 'no') %>% select(-HIV, -ID)
+    
+    return(list (seq_Reg(gene_matrix, Clin, clin_var_name), HIV = "Healthy Controls" ))
+  } else if (HIV == 'yes'){
+    gene_matrix = gene_matrix %>% filter(HIV == 'yes') %>% select(-HIV, -ID)
+    gene_matrix = as.matrix(gene_matrix)
+    
+    Clin = Clin %>% filter(HIV == 'yes') %>% select(-HIV, -ID)
+    
+    return(list (seq_Reg(gene_matrix, Clin, clin_var_name), HIV = "HIV Infected") )
+  }
+}
+
+## output summary and plots
+output_sum <- function(output, genelist){
+  # genelist is the name of the genelist 
+  # genelist: "RNAseq" or "MiSeq"
+  # a list of two sublists
+  clinical = output[[1]]$clinical
+  clinical = gsub("\n", "_", clinical, fixed=T)
+  # find a good file name
+  para_name = paste(unlist(strsplit(clinical, " ", fixed = T ))[1:3], collapse = "_")
+  para_name1 = gsub("/", "_", para_name, fixed=T)
+  
+  size = output[[1]]$size
+  hivstatus = output[[2]]
+  input = output[[1]]$results
+  # lm results
+  sig = sum(input$sig == "Sig.")
+  
+  if(sig > 0){
+    write.xlsx(input,
+           paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes/", 
+               sep = "", Sys.Date(),"_", para_name1, "_", genelist, hivstatus,"_",".xlsx"),
+           sheetName= paste(hivstatus,sep = "_", genelist ))
+    ############# summary table #####################
+  genes = input$names[input$sig == 'Sig.']
+  fdr = format.pval(input$FDR[input$sig == 'Sig.'], digits=4, eps = 0.0001, scientific = F)
+  p =  format.pval(input$p.value[input$sig == 'Sig.'] ,digits=4, eps = 0.0001, scientific = F)
+  # neg_log10p = -log10(input$p.value[input$sig == 'Sig.'])
+  slope = format(input$Estimate[input$sig == 'Sig.'], digits = 4, scientific = T )
+  sum_a = cbind(clinical, hivstatus, genes, fdr, p, slope, size)
+  colnames(sum_a) = c("Parameter", "HIV Status", "Gene", "Adjusted P", "Raw P", "Slope", "Sample Size")
+
+  ##return the summary table ##############
+  return(sum_a)
+  }else{}
+  
+}
+
+```
+
+
+```{r all}
+# rnaseq
+## clinical parameters
+clinical_names <- colnames(Clin)[5:18]
+clinical_names
+
+n_clinical <- length(clinical_names)
+############## rna seq ######
+## both
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names[1:12]) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq")
+
+############## miseq ######
+## both
+clinical_sum <- matrix(NA, 0, 7)
+for(i in clinical_names[1:12]) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes MiSeq")
+
+# classes of microbiome
+phylum <- colnames(Clin)[1:9 + 18]
+family <- colnames(Clin)[10:20 + 18]
+genus <- colnames(Clin)[21:28 + 18]
+species <- colnames(Clin)[29:44 + 18]
+
+############## rna seq ######
+## both
+## phylum
+clinical_sum <- matrix(NA, 0, 7)
+paste("phylum")
+for(i in phylum) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+paste("family")
+for(i in family) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+paste("genus")
+for(i in genus) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+paste("species")
+for(i in species) {
+   output =  hivornot(rnaseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq species")
+
+################## miseq #####################
+
+clinical_sum <- matrix(NA, 0, 7)
+paste("phylum")
+for(i in phylum) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes miseq phylum")
+## family
+clinical_sum <- matrix(NA, 0, 7)
+paste("family")
+for(i in family) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes miseq family")
+## genus
+clinical_sum <- matrix(NA, 0, 7)
+paste("genus")
+for(i in genus) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq genus")
+## species
+clinical_sum <- matrix(NA, 0, 7)
+paste("species")
+for(i in species) {
+   output =  hivornot(miseq, Clin, i)
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = "Vgenes RNAseq species")
+
+
+```
+
+
+## Correlation between Counts and Clinical parameter, Microbiome: interaction with HIV
+
 ```{r interactionlm}
 ########################## linear regression ##############################
 ## equal length of outcomes and covariates
@@ -173,12 +447,56 @@ lm_Reg_Interaction <- function(gene_matrix, Clin, clin_var_name, inter_term_name
                                                select(names, everything())
    # sort by p.value
    # outcome_lm = outcome_lm[order(outcome_lm$p.value), ]
- 
+    outcome_lm =   data.frame(outcome_lm)
+
    ## sample size 
     size = sum(!is.na(clinical_variable))
+  ################### scatter plot ##########################
+    sig = sum(outcome_lm$sig == "Sig.")
+  if(sig > 0){
+    # get significant genes list 
+    sig_genes = outcome_lm %>% dplyr::filter(sig == "Sig.") %>% select(names)
+    sig_genes = as.vector( unlist(sig_genes))
+    sig_genes_matrix = as.matrix(gene_matrix [, colnames(gene_matrix) %in%  sig_genes ]  )
+    ########## get the right sample size, missing values in clinical, and miseq #########3
+    # length(clinical_variable)  = max(nrow(sig_genes_matrix), length(clinical_variable) )
+    # nrow(sig_genes_matrix) = max(nrow(sig_genes_matrix), length(clinical_variable) )
+    plot_data = cbind(sig_genes_matrix, clinical_variable, interaction_var)
+    colnames(plot_data) = c(sig_genes, clin_var_name, inter_term_name)
+    plot_data = data.frame(plot_data) %>% na.omit()
+   for( i in  sig_genes ){
+     ## aes
+      x_clin = as.numeric(plot_data[, ncol(plot_data)-1 ])
+      y_gene = as.numeric(plot_data[, colnames(plot_data) == i]  )
+      plot_group = as.factor(plot_data[, ncol(plot_data) ] )
+     ## with plotdata
+     p = ggplot(mapping=aes( x = x_clin , 
+                             y =  y_gene,
+                             color = plot_group,
+                            shape = plot_group  )) +
+    geom_point() + 
+    geom_smooth(method="lm", se=FALSE) + 
+    labs(title=  paste(sep = " ", i, "vs.", clin_var_name, "\n group by", inter_term_name ),
+       x =  clin_var_name, y = i  ) + 
+    scale_color_discrete(name= paste(inter_term_name, " Status", sep = ""),
+                         breaks=c("no", "yes"),
+                         labels=c("Healthy Control", paste(inter_term_name, "-infected", sep = "")   )) + 
+       scale_shape_discrete(name= paste(inter_term_name, " Status", sep = ""),
+                         breaks=c("no", "yes"),
+                         labels=c("Healthy Control", paste(inter_term_name, "-infected", sep = "")   ) ) +
 
-   ## summary table 
-   return(list(results = data.frame(outcome_lm), size = size, clinical = clin_var_name ))
+    theme_minimal()
+    # 
+    print(p)
+    
+   }
+      
+      
+    }else{}
+ 
+
+   ##################  summary table 
+   return(list(results = outcome_lm, size = size, clinical = clin_var_name ))
 }
 
 ###################### output summary function ####################### 
@@ -196,15 +514,15 @@ output_sum <- function(output, genelist){
   input = output$results
   # lm results
   sig = sum(input$sig == "Sig.")
-  
-            write.xlsx(input,
+      write.xlsx(input,
            paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Vgenes_inter/", 
-               sep = "", Sys.Date(),"_", para_name1, "_", genelist,"_",".xlsx"),
-           sheetName= paste(para_name1,sep = "_", genelist ))
+               sep = "", Sys.Date(),"_", para_name1, "_", genelist,"_","interaction.xlsx"),
+           sheetName= paste(sep = "_", genelist ))
+  
+            
   
   if(sig > 0){
-
-
+  
   ############# summary table #####################
   genes = input$names[input$sig == 'Sig.']
   fdr_no = format.pval(input$FDR_no[input$sig == 'Sig.'], digits=4, eps = 0.0001, scientific = F)
@@ -221,6 +539,7 @@ output_sum <- function(output, genelist){
                       "Adjusted_P_Non", "Slope_Non", 
                       "Adjusted_P_HIV", "Slope_HIV", 
                       "Adjusted_P_Diff", "Slope_Diff", "Sample_Size")
+
   return(sum_a)
   }else{}
 
@@ -230,11 +549,9 @@ output_sum <- function(output, genelist){
 ```
 
 
-## Results
-
 All results of RNAseq are negative.
 
-```{r run}
+```{r run_inter}
 ############# with clinical viarable #################
 ############## rna seq ######
 ## both
@@ -245,16 +562,17 @@ for(i in clinical_names[1:12]) {
    sum_a = output_sum(output, "RNAseq")
    clinical_sum = rbind(clinical_sum, sum_a)
 }
-kable(clinical_sum, caption = "Vgenes RNAseq")
+kable(clinical_sum, caption = "Vgenes RNAseq: Clinical Parameter and HIV Interaction")
 
 ########## Miseq ################
+clinical_sum <- matrix(NA, 0, 9)
 for(i in clinical_names[1:12]) {
    output =  lm_Reg_Interaction(miseq, Clin, i, "HIV")
    # summary table 
    sum_a = output_sum(output, "MiSeq")
    clinical_sum = rbind(clinical_sum, sum_a)
 }
-kable(clinical_sum, caption = "Vgenes MiSeq")
+kable(clinical_sum, caption = "Vgenes MiSeq: Clinical Parameter and HIV Interaction")
 
 ###################### with Microbiome ############
 # classes of microbiome
@@ -263,12 +581,59 @@ family <- colnames(Clin)[10:20 + 18]
 genus <- colnames(Clin)[21:28 + 18]
 species <- colnames(Clin)[29:44 + 18]
 
+####### RNA seq #################
+for (j in c("phylum", "family", "genus", "species") ) { 
+   clinical_sum <- matrix(NA, 0, 9)
+   for (i in eval(as.name(j)) ) {
+   output =  lm_Reg_Interaction(rnaseq, Clin, i, "HIV")
+   # summary table 
+   sum_a = output_sum(output, "RNAseq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+   }
+   print(kable(clinical_sum, caption = paste("Vgenes RNAseq: HIV Interaction with ",
+                                       sep = "",
+                                       j) ) )
+}
+
+####### miseq #################
+for (j in c("phylum", "family", "genus") ) { 
+   clinical_sum <- matrix(NA, 0, 9)
+   for (i in eval(as.name(j)) ) {
+   output =  lm_Reg_Interaction(miseq, Clin, i, "HIV")
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+   }
+   print(kable(clinical_sum, caption = paste("Vgenes MiSeq: HIV Interaction with ",
+                                       sep = "",
+                                       j) ) )
+}
+
+######### "species" ###############
+clinical_sum <- matrix(NA, 0, 9)
+for (i in species[-6] ) {
+   output =  lm_Reg_Interaction(miseq, Clin, i, "HIV")
+   # summary table 
+   sum_a = output_sum(output, "MiSeq")
+   clinical_sum = rbind(clinical_sum, sum_a)
+}
+kable(clinical_sum, caption = paste("Vgenes MiSeq: HIV Interaction with species") )
+
+
 ```
+
+## Fix the non-negative zero-inflated continuous pattern of Microbiome Data
+
+```{r ln_inter}
+Clin[1:10, 24:28]
+```
+
 
 ## Test of the function
 
 ```{r testInter, echo=FALSE, eval=FALSE}
-gene_matrix <- as.matrix(rnaseq[, -c(46,47)] )
+
+gene_matrix <- as.matrix(miseq[, -c(1,2)] )
 n_gene = ncol(gene_matrix)
 ## basic output
 hiv = Clin$HIV
@@ -298,23 +663,78 @@ outcome_lm = lapply(1:n_gene, function(i){
                         c("slope_no", "p.value_no", 
                           "slope_hiv", "p.value_hiv",
                           "slope_diff", "p.value_diff" ))))
-outcome_lm
-   
-outcome_lm  %>% dplyr::mutate(FDR = if(n_gene >=  17){
-                                                   p.adjust(p.value, "BH", n_gene )
-                                                       } else if (n_gene <= 10) {p.value} 
-                                                         else{
-                                                         BL(p.value, alpha = 0.05, silent = T)$adjPValues
-                                                         },
-                                            FDR_Inter = if(n_gene >=  17){
-                                                   p.adjust(p.value_Inter, "BH", n_gene )
-                                                       } else if (n_gene <= 10) {p.value_Inter} 
-                                                         else{
-                                                         BL(p.value_Inter, alpha = 0.05, silent = T)$adjPValues
-                                                         }) %>% 
-                                               mutate(sig = ifelse( (FDR  < 0.05) |  (FDR_Inter  < 0.05), 
-                                                                     "Sig.", "Non") )
 
+   
+outcome_lm =  outcome_lm %>% 
+      # https://cran.r-project.org/web/packages/mutoss/mutoss.pdf
+      # The Benjamini-Liu (BL) step-down procedure
+                              dplyr::mutate(FDR_no = if(n_gene >=  17){
+                                                   p.adjust(p.value_no, "BH", n_gene )
+                                                       } else if (n_gene <= 10) {p.value_no } 
+                                                         else{
+                                                         BL(p.value_no , alpha = 0.05, silent = T)$adjPValues
+                                                         },
+                                            FDR_hiv = if(n_gene >=  17){
+                                                   p.adjust(p.value_hiv, "BH", n_gene )
+                                                       } else if (n_gene <= 10) {p.value_hiv } 
+                                                         else{
+                                                         BL(p.value_hiv, alpha = 0.05, silent = T)$adjPValues
+                                                         }, 
+                                            FDR_diff = if(n_gene >=  17){
+                                                   p.adjust(p.value_diff, "BH", n_gene )
+                                                       } else if (n_gene <= 10) {p.value_diff } 
+                                                         else{
+                                                         BL(p.value_diff, alpha = 0.05, silent = T)$adjPValues
+                                                         }, 
+                                               names = colnames(gene_matrix)) %>% 
+                                               dplyr::mutate(slope_no = round(slope_no, 10),
+                                                      slope_hiv = round(slope_hiv, 10),
+                                                      slope_diff = round(slope_diff, 10)
+                                                      )%>% 
+                                               mutate(sig = ifelse( (FDR_diff  < 0.05) |  (FDR_hiv  < 0.05),
+                                                                    "Sig.", "Non") ) %>%
+                                               select(names, everything())
+
+# get significant genes list 
+# get significant genes list 
+# get significant genes list 
+clinical_variable = as.matrix(Clin[, colnames(Clin) == "CD4 T cells (% viable)" ])
+
+    sig_genes = outcome_lm %>% dplyr::filter(sig == "Sig.") %>% select(names)
+    sig_genes = as.vector( unlist(sig_genes))
+    sig_genes_matrix = as.matrix(gene_matrix [, colnames(gene_matrix) %in%  sig_genes ]  )
+    ########## get the right sample size, missing values in clinical, and miseq #########3
+    # length(clinical_variable)  = max(nrow(sig_genes_matrix), length(clinical_variable) )
+    # nrow(sig_genes_matrix) = max(nrow(sig_genes_matrix), length(clinical_variable) )
+    plot_data = cbind(sig_genes_matrix, clinical_variable, Clin$HIV )
+    colnames(plot_data) = c(sig_genes, "CD4 T cells (% viable)", "HIV")
+    plot_data = data.frame(plot_data) %>% na.omit()
+    
+   
+   for( i in  sig_genes ){
+     ## aes
+       x_clin = as.numeric(plot_data[, ncol(plot_data)-1 ])
+       y_gene = as.numeric(plot_data[, colnames(plot_data) == i]  )
+      plot_group = as.factor(plot_data[, ncol(plot_data) ] )
+     ## with plotdata
+     p = ggplot(mapping=aes( x = x_clin , 
+                             y =  y_gene,
+                             color = plot_group,
+                            shape = plot_group  )) +
+    geom_point() + 
+    geom_smooth(method="lm", se=FALSE, fullrange=TRUE) + 
+    labs(title=  paste(sep = " ", i, "vs.", "y", "\nand group by","HIV" ),
+       x =  "x", y = i  ) + 
+    scale_color_discrete(name="HIV Status",
+                         breaks=c("no", "yes"),
+                         labels=c("Healthy Control", "HIV-infected")) + 
+
+    theme_minimal()
+    # 
+    print(p)
+   }
+
+      
 test = lm_Reg_Interaction(rnaseq, Clin, clinical_names[1], "HIV")
 test$results
 ######## Gamma Distribution ################

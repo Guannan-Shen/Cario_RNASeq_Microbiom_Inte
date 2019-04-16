@@ -226,6 +226,7 @@ output_sum <- function(output, genelist){
 
 ```
 
+
 ```{r withClin, echo = FALSE}
 # rnaseq
 ## clinical parameters
