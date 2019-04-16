@@ -1,0 +1,125 @@
+---
+title: "HIV Infected Shared Lineage EDA"
+author: "Guannan Shen"
+date: "April 15, 2019"
+output: 
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/lineage/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+
+```{r libs, echo = FALSE}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(stats)
+library(readxl)
+library(openxlsx)
+# multiple testing
+library(mutoss)
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+## Shared Lineage HIV-infected
+
+```{r dataimport}
+###  rnaseq
+hiv_lineage_raw <- read_excel( "Infected_vs_Uninfected_Antibody_Public_Lineage.xlsx")
+dim(hiv_lineage_raw)
+tail(hiv_lineage_raw)
+
+## 
+hiv_lineage <- data.frame( hiv_lineage_raw )
+colnames( hiv_lineage ) <- NULL
+hiv_lineages <-  data.frame(t(hiv_lineage[-c(71:73), -c(1,21)] ))
+hiv_lineages  <-  hiv_lineages %>% dplyr::mutate( ID =  colnames(hiv_lineage_raw)[-c(1,21)]) %>%
+                     select(ID, everything())
+colnames(hiv_lineages)[-c(1)] <- hiv_lineage_raw$Public_Lineages[-c(71:73)]
+head(hiv_lineages[, 1:10])
+dim(hiv_lineages)
+
+write.xlsx(hiv_lineages,
+           paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/lineage/hiv/", 
+               sep = "_", Sys.Date(),"HIV-Infected Shared Lineages",".xlsx"),
+           sheetName= paste("HIV-Infected Shared Lineage" ))
+
+```
+
+## Exploratory Data Analysis
+Find all lineages with no missing values across all donors.
+
+```{r eda}
+# the data hiv_lineages
+hiv_lineages_full <- hiv_lineages[, ########### all non-missing column
+                                  apply(hiv_lineages, 2, function(x) !(anyNA(x)) ) ]
+dim(hiv_lineages_full)
+
+for (i  in 2:ncol(hiv_lineages_full) ) {
+  x = as.numeric(hiv_lineages_full[,i])
+  mean = mean(x)
+  var = var(x)
+ print( 
+   ggplot(hiv_lineages_full, aes(x )  )   +
+  geom_histogram() +
+  theme_minimal() +
+  labs(title = paste(""),
+       x = colnames(hiv_lineages_full)[i] ) +
+    annotate("text", x =  as.numeric( quantile( as.numeric(hiv_lineages_full[, i]), probs = 0.95) ), 
+             y = c(2.9, 2.7, 2.5, 2.3) , 
+           label =  c("Mean = ", mean,
+                      "Variance =", var)  )
+ )
+}
+  
+
+
+```
+
+**1. Only `r ncol(hiv_lineages_full)` lineages don't have missing values.**  
+**2. The variance is larger than the mean.**  
+**3. Quasi-poisson?**
