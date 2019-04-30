@@ -19,4 +19,177 @@ output:
     toc_float: yes
 ---
 
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/interferome/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+
+```
+
+
+
+```{r libs, warning=FALSE}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(edgeR)
+library(EDASeq)
+library(DESeq2)
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(stats)
+library(BiocParallel)
+library(readxl)
+library(openxlsx)
+library(limma)
+library(scater)
+library(rgl)
+library(pca3d)
+library(EnhancedVolcano)
+library(RColorBrewer)
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+# Data Preprocessing
+15 HIV-infected-treated donors vs. 11 healthy controls.  
+
+
+```{r eda_qc}
+# import data
+cnts.raw <- read.xlsx("HIV-1_infected_HAART_treated_Raw_Counts.xlsx")
+
+########### need to realign the samples ###################
+
+# filtering, the same 
+## filter the raw data and check dim
+cnts_fsym <- cnts.raw[rowSums(cnts.raw[, 4:29])>=(5*ncol(cnts.raw[, 4:29])), ]
+dim(cnts_fsym)
+row.names(cnts_fsym) <- NULL
+
+### get matrix
+cnts_f <- cnts_fsym %>% dplyr::select(-c(Symbol, Length ) ) %>% 
+            tibble::column_to_rownames("Gene_ID") %>% as.matrix()
+
+
+########### pheno grouping ####################
+dim(cnts_f)
+ctrl.id <-  colnames(cnts_f)[1:11]
+hiv.id <- colnames(cnts_f)[12:26]
+
+rna.pid <- colnames(cnts_f)
+pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 11), 
+                                                     rep("HIV-Treated", 15)
+                                                     )) )
+pheno$txt %<>% relevel("Control")
+
+############ EDA ############
+# using the function from EDASeq
+set <- newSeqExpressionSet(as.matrix(cnts_f),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+
+################# deseq2 ###########################
+## now using deseq2
+dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ condition)
+dds <- estimateSizeFactors(dds)
+## normalization factors
+sizeFactors(dds)
+cnts.deseq2 <- counts(dds, normalized=TRUE)
+
+######## edgeR TMM ###############
+## edgeR object
+group <- c(rep(1, 11), rep(2, 15))
+y <- DGEList(counts= as.matrix(cnts_f), group=group)
+## normalization 
+y <- calcNormFactors(y, method = "TMM")
+y$samples
+cnts.edger <- edgeR::cpm(y)
+
+########## TPM #########
+cnts.tpm <- calculateTPM(cnts_f, effective_length = cnts_fsym$Length)
+
+###########3 using scater for QC EDA ##################
+rna_info <- data.frame(pid = rna.pid, Group = as.factor(c(rep("Control", 11), 
+                                                     rep("HIV-Treated", 15)
+                                                     )) )
+rna_info$Group %<>% relevel("Control")
+
+## cnts. list
+cnts.list <- list(cnts_f, cnts.edger, cnts.deseq2, cnts.tpm)
+cnts.names <- c("Filtered Counts", "TMM Normalized Counts",
+                "DESeq2 Normalized Counts", "TPM Normalized Counts")
+par(mfrow = c(1,2))
+for (i in 1:4){
+  j  = cnts.list[[i]]
+  ## using scater, start with an object
+example_sce <- SingleCellExperiment(
+                 assays = list(counts = j),
+                 colData = rna_info)
+## RLE plots
+print( scater::plotRLE(example_sce, exprs_values = "counts", exprs_logged = FALSE,
+        colour_by = "Group", style = "minimal") + scale_x_discrete("Samples", labels = rna.pid) + labs(caption = paste("RLE Plot:" ,cnts.names[i]) ) )
+## pca plots
+example_sce <- SingleCellExperiment(
+                 assays = list(logcounts = j),
+                 colData = rna_info)
+print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
+}
+
+######### the gene list is a fair list###########
+## define the gene list 
+invitro_genes <- c("Mx2", "APOBEC3G", "Siglec1", "ISG15", "Bst2")
+## turn in to upper case
+invitro_genes[ sapply(invitro_genes, toupper) %nin% cnts_fsym$Symbol ]
+
+```
+
+```{r de_edger}
+# make sure y is the object from edger
+## DE analysis of edger
+y <- estimateDisp(y)
+et <- exactTest(y, pair = 1:2)
+dim(et)
+
+### results
+topTags(et, n = 10, adjust.method = "BH")
+head(et$table)
+et$comparison
+## summary results
+summary(decideTests(et, p.value = 0.05,
+            lfc = 0))
+paste(1706+ 2540, "genes with FDR 0.05")
+
+summary(decideTests(et, p.value = 0.05,
+            lfc = 1))
+paste(157 + 680, "genes with FDR 0.05")
+
+summary(decideTests(et, p.value = 0.05,
+            lfc = 2))
+## 
+
+```
+
 

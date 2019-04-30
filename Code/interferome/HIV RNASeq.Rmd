@@ -1338,7 +1338,7 @@ example_sce <- SingleCellExperiment(
 print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
 }
 ## define the gene list 
-invitro_genes <- c("Mx2", "APOBEC3G", "Tetherin", "ISG15", "CD169")
+invitro_genes <- c("Mx2", "APOBEC3G", "Siglec1", "ISG15", "Bst2")
 ## turn in to upper case
 invitro_genes[ sapply(invitro_genes, toupper) %nin% res.edger.05$Symbol ]
 invitro_genes[ sapply(invitro_genes, toupper) %nin% res.edger.05.1$Symbol ]
