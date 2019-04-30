@@ -1,0 +1,529 @@
+---
+title: "PCA Gene Lists Untreated"
+author: "Guannan Shen"
+date: "April 29, 2019"
+output: 
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+---
+
+
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+
+```{r libs, warning=FALSE, echo=F}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+library(edgeR)
+library(EDASeq)
+library(DESeq2)
+library(knitr)
+library(tidyverse)
+library(magrittr)
+library(stats)
+library(BiocParallel)
+library(readxl)
+library(openxlsx)
+library(limma)
+library(scater)
+library(rgl)
+library(pca3d)
+library(EnhancedVolcano)
+library(RColorBrewer)
+library(grid)
+library(cowplot)
+require("ggrepel")
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+
+```{r edger}
+## data 
+# import unnormalized counts table
+cnts.raw <- read.delim("All_Sample_geneCounts_raw_counts.txt", header = TRUE, sep = "\t")
+
+cnts <- cnts.raw %>% dplyr::select(-c(Symbol, Length ) ) %>% tibble::column_to_rownames("Gene_ID")
+cnts <- as.matrix(cnts)
+rna.pid <- colnames(cnts)
+# now we have the common counts table 
+## pheno
+ctrl.id <-  colnames(cnts)[1:13]
+hiv.id <- colnames(cnts)[14:32]
+## from dim() we know there are 32 samples
+pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 13), 
+                                                     rep("HIV", 19)
+                                                     )) )
+pheno$txt %<>% relevel("Control")
+
+## add Symbol to the data  
+cnts <- as.data.frame(cnts)
+cnts$Symbol <- cnts.raw$Symbol
+cnts$Length <- cnts.raw$Length
+
+##filter the raw data and check dim
+cnts_fsym <- cnts[rowSums(cnts[, 1:32])>=(5*ncol(cnts[, 1:32])), ]
+## should end up around 15 - 20K genes 
+ngenes <- nrow(cnts_fsym)
+paste("The number of remaining genes: ", ngenes, sep = '')
+# all integer in cnts_f
+cnts_f <- as.matrix(cnts_fsym[, 1:32])
+
+# using the function from EDASeq
+set <- newSeqExpressionSet(as.matrix(cnts_f),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+
+########### DESeq 2 ###################
+# using the function from EDASeq
+set <- newSeqExpressionSet(as.matrix(cnts_f),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+## now using deseq2
+dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ condition)
+dds <- estimateSizeFactors(dds)
+## normalization factors
+sizeFactors(dds)
+cnts.deseq2 <- counts(dds, normalized=TRUE)
+
+############### edger wrapper #########################
+## edger_wrapper <- function()
+
+######## edgeR TMM ###############
+## edgeR object
+group <- c(rep(1, 13), rep(2, 19))
+y <- DGEList(counts= as.matrix(cnts_f), group=group)
+## normalization 
+y <- calcNormFactors(y, method = "TMM")
+y$samples
+cnts.edger <- edgeR::cpm(y)
+
+
+## DE analysis of edger
+y <- estimateDisp(y)
+et <- exactTest(y, pair = 1:2)
+dim(et)
+### results
+topTags(et, n = 10, adjust.method = "BH")
+head(et$table)
+et$comparison
+## summary results
+summary(decideTests(et, p.value = 0.05,
+            lfc = 0))
+paste(1706+ 2540, "genes with FDR 0.05")
+summary(decideTests(et, p.value = 0.05,
+            lfc = 1))
+paste(157 + 680, "genes with FDR 0.05")
+summary(decideTests(et, p.value = 0.05,
+            lfc = 2))
+
+## results summary 
+res.edger <- et$table %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
+                                 FDR = p.adjust(et$table$PValue, method = "BH") )
+
+```
+
+
+```{r plot_norm_counts}
+## plot counts, with source code from plotCounts()
+group.plot <- factor(c(rep(1,13), rep(2,19)), labels = c("Health Control", "HIV Infected"))
+
+
+## use the # No. of genes in the cnts.edger matrix
+sim_plotcounts <- function(genenumber){
+  plot(as.integer(group.plot)+ runif(ncol(cnts.edger), -0.1, 0.1), cnts.edger[genenumber, ], 
+    xlim = c(0.5, length(levels(group.plot)) + 0.8), xaxt="n" ,
+    xlab = "Groups", ylab = "Normalized Counts", main = res.edger[genenumber, ]$Symbol)
+axis(1, at = seq_along(levels(group.plot)), levels(group.plot))
+## pos below
+text(length(levels(group.plot)) + 0.5, stats::quantile( cnts.edger[genenumber, ], 0.95), 
+     paste("log2 Fold Change:", round(res.edger[genenumber, ]$logFC,2),
+             "","Adjusted p-value:",  
+           format(res.edger[genenumber, ]$FDR,digits=2,scientific=TRUE ),"",
+           "Gene_ID: ", rownames(res.edger)[genenumber],
+                                           sep = "\n"), pos = 1)
+}
+## plot top 10
+for(i in order(res.edger$PValue)[1:10]){
+  sim_plotcounts(i)
+}
+
+
+```
+
+
+## Genes lists and their DE results
+Clinical data, making sure the samples are in the same order as the samples' order in the genematrix.  
+
+Significant altered genes within gene lists, 130 for IFN-beta and 117 for core ISGs. 
+
+```{r clinical}
+# clinical data, the samples are in the same order as the samples order in the genematrix
+clinical_order <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/clinical_order.csv" )
+clinical_names <- c("Blood CD4 T Cell Counts (cells/ul)", "Plasma Viral Load", "Tissue HIV RNA (per CD4 T cell)",
+                    "Tissue CD4 T Cell Counts (number/g)", "IL-6 (pg/ml)", "CRP (ug/ml)", "iFABP (pg/ml)",
+                    "sCD27 (U/ml)", "CD14 (ng/ml)", "LPS (pg/ml)", "LTA (OD)", 
+                    base::paste("IFN", '\u03b1', sep = "" ),  base::paste("IFN", '\u03b2', sep = "" ))
+n_clinical <- length(clinical_names)
+clinical_names 
+n_clinical
+clinical_sum <- matrix(NA, 13,8)
+# genelists
+isgs <- as.data.frame(read.delim("coreISG"))
+genesbeta <- as.data.frame(read.delim("genesbeta"))
+
+# all DE results for genes lists ##
+isgs_DE <- read.xlsx( "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/ISGs_DEanalysis_results.xlsx")
+genesbeta_DE <- read.xlsx("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/IFNbeta_DEanalysis_results.xlsx")
+
+############### cnts for genes lists fdr 0.05 ##################
+setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/")
+cnts.genesbeta.edger.05 <- read.csv("corr/cnts.genesbeta.edger.05.csv")
+cnts.isgs.edger.05 <- read.csv("corr/cnts.isgs.edger.05.csv")
+
+## DE results
+genesbeta.edger.05 <- read.csv("corr/genesbeta.edger.05.csv")
+isgs.edger.05 <- read.csv("corr/isgs.edger.05.csv")
+
+
+```
+
+```{r de_scatter}
+
+
+de_scatter <- function(de, label_fdr, label_fc, name){
+  ggplot(de, aes(logFC, -log10(FDR) )) +
+  geom_point(colour = "gray65") + 
+  geom_point(data = subset(de, FDR < 5e-2 & logFC > 0 ),  aes(logFC, -log10(FDR) ), colour="black") +
+  geom_point(data = subset(de, FDR < 5e-2 & logFC < 0 ),  aes(logFC, -log10(FDR) ), colour="gray35") +
+  labs(x = expression(paste(log[2]," Fold Change" )),
+        y =  expression(paste("-",log[10]," FDR" )),
+       caption =  paste("Differential Expression Results of ", name) ) +
+  geom_text_repel(data=subset(de, FDR < label_fdr & logFC > label_fc ),
+             aes(label=Symbol), size = 3,
+             box.padding = unit(0.35, "lines"),
+              point.padding = unit(0.3, "lines")) +
+  geom_hline(yintercept=-log10(0.05), linetype="dashed", color = "black") +
+  geom_vline(xintercept=0, linetype="dashed", color = "black") +
+  annotate(geom="text", x = 3, 
+               y=-log10(0.01), 
+            label="FDR < 0.05",
+               color="black") +
+  xlim(-1.5, 3.5) +
+  theme_bw()
+  
+}
+
+
+de_scatter(isgs_DE, 1e-5, 2, "Core ISGs")
+de_scatter(genesbeta_DE , 1e-5, 2, "IFN-Beta Genes")
+
+p1 <- de_scatter(isgs_DE, 1e-5, 2, "Core ISGs")
+p2 <- de_scatter(genesbeta_DE , 1e-5, 2, "IFN-Beta Genes")
+ grid.newpage()
+ grid.draw(rbind(ggplotGrob(p1), ggplotGrob(p2), size = "last"))
+  
+```
+
+## PCA and plots 
+
+For all filered TMM normalized counts, significant altered genes in Core ISGs and IFN-beta genes. 
+
+
+```{r pca_plots}
+## check samples order
+clinical_order <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/clinical_order.csv" )
+
+## do pca and get some plots for the data (matrix)
+# The data is subjects as columns and features at rows
+symbol <- cnts_fsym$Symbol
+
+## pheno
+rna.pid <- colnames(cnts)[1:32]
+pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 13), 
+                                                     rep("HIV", 19)
+                                                     )) )
+pheno$txt %<>% relevel("Control")
+
+prcomp_wrapper <- function(data, gene_symbol, pheno, name){
+  ####### default groups ##############
+  group_labels = c("Healthy Controls",  "HIV-Infected")
+  ###### PCA by prcomp ##########
+  data.pca = prcomp(t(data), center = TRUE, scale. = TRUE, retx = TRUE)
+  data.pca.symbol = data.pca$rotation
+  row.names(data.pca.symbol) = gene_symbol
+  data.pca.symbol = as.matrix(data.pca.symbol)
+  ########## pc names ##############
+  pc_sample = data.frame(data.pca$x)
+  pc = colnames(data.pca$x)
+  ######### variance of pcs############
+  data.sd = ( data.pca$sdev/sum(data.pca$sdev) )* 100
+  # data for bar plot
+  pc.sd = data.frame(PCs = pc,
+                      Variance = data.sd) %>% top_n(n = 9, wt = Variance)
+  
+  p.var = ggplot(data=pc.sd, aes(x=PCs, y=Variance)) +
+   geom_bar(stat="identity", fill = "Black") +
+    labs(y = "% Variance", 
+         caption = paste("Variance of PCs for ", name ) ) +
+   theme_bw()
+   print(p.var)
+   ########### pc1 vs pc2 #############
+   pca12 = ggplot(data = pc_sample, aes(x = PC1, y = PC2, color = pheno$txt, shape = pheno$txt)) +
+        geom_point(size = 2) +
+        xlab(paste("PC1 (", round(pc.sd$Variance[1],2) ,"%", ")", 
+                   sep = "") ) +
+        ylab(paste("PC2 (", round(pc.sd$Variance[2],2) ,"%", ")", 
+             sep = "") ) +
+       scale_color_manual(values=c("gray70", "Black"), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+      scale_shape_manual( values = c(16, 17), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+       stat_ellipse(type = "t", linetype = "solid") +
+       labs(caption = paste("PC1 vs PC2 for ", name ) ) +
+       theme_bw()
+       print(pca12)
+       
+      pca13 = ggplot(data = pc_sample, aes(x = PC1, y = PC3, color = pheno$txt, shape = pheno$txt)) +
+        geom_point(size = 2) +
+        xlab(paste("PC1 (", round(pc.sd$Variance[1],2) ,"%", ")", 
+                   sep = "") ) +
+        ylab(paste("PC3 (", round(pc.sd$Variance[3],2) ,"%", ")", 
+             sep = "") ) +
+       scale_color_manual(values=c("gray70", "Black"), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+      scale_shape_manual( values = c(16, 17), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+       stat_ellipse(type = "t", linetype = "solid") +
+       labs(caption = paste("PC1 vs PC3 for ", name ) ) +
+       theme_bw()
+       print(pca13)
+       
+        pca23 = ggplot(data = pc_sample, aes(x = PC2, y = PC3, color = pheno$txt, shape = pheno$txt)) +
+        geom_point(size = 2) +
+        xlab(paste("PC2 (", round(pc.sd$Variance[2],2) ,"%", ")", 
+                   sep = "") ) +
+        ylab(paste("PC3 (", round(pc.sd$Variance[3],2) ,"%", ")", 
+             sep = "") ) +
+       scale_color_manual(values=c("gray70", "Black"), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+      scale_shape_manual( values = c(16, 17), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+       stat_ellipse(type = "t", linetype = "solid") +
+       labs(caption = paste("PC2 vs PC3 for ", name ) ) +
+       theme_bw()
+       print(pca23)
+    ############### pc1 vs il-6, ifn-beta ###############
+    pc1_clin_1 = ggplot(mapping = aes(x = clinical_order$IL.6 , y = pc_sample$PC1) ) +
+         labs(x = "IL-6 (pg/ml)",
+              y = paste("PC1 (", round(pc.sd$Variance[1],2) ,"%", " Variance", ")", sep = "") , 
+         caption = paste("IL-6 (pg/ml) vs PC1 for ", name ) )  +
+         geom_point(aes(shape = pheno$txt, colour = pheno$txt), size = 2.5) +
+        geom_smooth(method = "loess", se = FALSE, colour = "black") +
+        geom_smooth(method = "lm", se = FALSE, colour = "black") +
+        scale_color_manual(values=c("gray70", "Black"), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+       scale_shape_manual( values = c(16, 17), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+        theme_bw()
+    print(pc1_clin_1)
+    
+   pc1_clin_2 = ggplot(mapping = aes(x = clinical_order$IFNb , y = pc_sample$PC1) ) +
+         labs(x = "IFN-Beta",
+              y = paste("PC1 (", round(pc.sd$Variance[1],2) ,"%", " Variance",")", sep = "") , 
+         caption = paste("IFN-Beta vs PC1 for ", name ) )  +
+         geom_point(aes(shape = pheno$txt, colour = pheno$txt), size = 2.5) +
+        geom_smooth(method = "loess", se = FALSE, colour = "black") +
+        geom_smooth(method = "lm", se = FALSE, colour = "black") +
+        scale_color_manual(values=c("gray70", "Black"), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+       scale_shape_manual( values = c(16, 17), 
+                    name="Groups",
+                    labels = group_labels
+                    ) +
+        theme_bw()
+    print(pc1_clin_2)
+}
+
+prcomp_wrapper(cnts.edger, symbol, pheno, "TMM Normalized Counts")
+
+##### altered genes lists ##############
+cnts.isgs.edger.sig <- cnts.isgs.edger.05 %>% column_to_rownames("X") %>% as.matrix
+symbol <- isgs.edger.05$Symbol.x
+prcomp_wrapper(cnts.isgs.edger.sig, symbol, pheno, "Significantly Altered Core ISGs")
+
+
+cnts.genesbeta.edger.sig <- cnts.genesbeta.edger.05 %>% column_to_rownames("X") %>% as.matrix
+symbol <- genesbeta.edger.05$Symbol.x
+prcomp_wrapper(cnts.genesbeta.edger.sig, symbol, pheno, "Significantly Altered IFN-Beta Genes")
+
+
+
+
+```
+
+The ellipse was drawn based on the multi-variate t distribution. 
+
+### PC1 and Clinical Variables
+
+```{r pc1_clin, echo = F}
+pc_x <- function(data, gene_symbol) {
+  ####### default groups ##############
+  group_labels = c("Healthy Controls",  "HIV-Infected")
+  ###### PCA by prcomp ##########
+  data.pca = prcomp(t(data), center = TRUE, scale. = TRUE, retx = TRUE)
+  data.pca.symbol = data.pca$rotation
+  row.names(data.pca.symbol) = gene_symbol
+  data.pca.symbol = as.matrix(data.pca.symbol)
+  ########## pc names ##############
+  pc_sample = data.frame(data.pca$x)
+  return(pc_sample)
+}
+
+symbol <- isgs.edger.05$Symbol.x
+isgs.pca.x <- pc_x (cnts.isgs.edger.sig, symbol)
+symbol <- genesbeta.edger.05$Symbol.x
+genesbeta.pca.x <- pc_x (cnts.genesbeta.edger.sig, symbol)
+
+pc1_sum <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/pc1_sum.csv")
+pc1_sum <- as.data.frame(pc1_sum)
+pc1_sum$p.value <- as.numeric(pc1_sum$p.value)
+pc1_sum$Gene.Lists <- c( rep("PC1 of Significantly Altered Core ISGs" ,14)  ,
+                          rep("PC1 of Significantly Altered IFN-Beta Genes" ,14))
+
+ggplot(data = pc1_sum, aes(x=Clinical.Parameters, y= Gene.Lists, fill= -log10(p.value)  ) ) + 
+  geom_tile(size = 2) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 50, vjust = 1, 
+                                   size = 10, hjust = 1)) +
+  coord_fixed() +
+  xlab("") +
+  ylab("") +
+  scale_fill_gradient2(low = "Black", high = "red", mid = "white", 
+                       midpoint = -log10(0.05), limit = c(0,  max(-log10(pc1_sum$p.value)) ), 
+                       space = "Lab", 
+                     name= expression(paste("-",log[10]," p value" )),
+                     breaks = round(c(0, -log10(0.05), -log10(0.01), -log10(0.001)),2) ) +
+  scale_color_discrete(name = "") 
+
+kable(pc1_sum[, 1:3])
+
+```
+
+
+
+```{r test, echo=F, eval=F}
+
+data = cnts.edger
+
+data.pca = prcomp(t(data), center = TRUE, scale. = TRUE, retx = TRUE)
+  data.pca.symbol = data.pca$rotation
+  row.names(data.pca.symbol) = symbol
+  data.pca.symbol = as.matrix(data.pca.symbol)
+  ########## pc names ##############
+  pc_sample = data.frame(data.pca$x)
+  pc = colnames(data.pca$x)
+  ######### variance of pcs############
+  data.sd = ( data.pca$sdev/sum(data.pca$sdev) )* 100
+  # data for bar plot
+  pc.sd = data.frame(PCs = pc,
+                      Variance = data.sd) %>% top_n(n = 9, wt = Variance)
+  
+  p.var = ggplot(data=pc.sd, aes(x=PCs, y=Variance)) +
+   geom_bar(stat="identity", fill = "Black") +
+    labs(y = "% Variance", 
+         caption = paste("Variance of PCs for " ) ) +
+   theme_bw()
+   p.var
+
+sum(row.names(pc_sample) == pheno$pid)
+
+
+pca12 = ggplot(data = pc_sample, aes(x = PC1, y = PC2, color = pheno$txt, shape = pheno$txt)) +
+        geom_point(size = 2) +
+        xlab(paste("PC1 (", round(pc.sd$Variance[1],2) ,"%", ")", 
+                   sep = "") ) +
+        ylab(paste("PC2 (", round(pc.sd$Variance[2],2) ,"%", ")", 
+             sep = "") ) +
+       scale_color_manual(values=c("gray70", "Black"), 
+                    name="Groups",
+                    labels=c("Healthy Controls",  "HIV-Infected")
+                    ) +
+      scale_shape_manual( values = c(16, 17), 
+                    name="Groups",
+                    labels=c("Healthy Controls",  "HIV-Infected")
+                    ) +
+       stat_ellipse(type = "t", linetype = "solid") +
+       labs(caption = paste("Variance of PCs for " ) ) +
+       theme_bw()
+pca12
+  
+
+######## check sample #############
+clinical_order$pid == pheno$pid
+
+## check samples ######
+colnames(cnts.isgs.edger.05)[-1] == colnames(cnts.edger)
+colnames(cnts.genesbeta.edger.05)[-1] == colnames(cnts.edger)
+
+sum(isgs.edger.05$Gene_ID == cnts.isgs.edger.05$X)
+sum(genesbeta.edger.05$Gene_ID == cnts.genesbeta.edger.05$X)
+
+####### get pc1 #####
+# pc_sample
+
+```

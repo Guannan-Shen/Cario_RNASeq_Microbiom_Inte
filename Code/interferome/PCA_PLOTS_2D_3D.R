@@ -37,9 +37,9 @@ packageVersion("edgeR")
 
 ######## set wd #############
 ## ubuntu 
-## setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
 ## Asus
-setwd("C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+## setwd("C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
 getwd()
 
 #########################################################
@@ -161,13 +161,15 @@ pca12.f
 ## 'princomp' can only be used with more units than variables
 cnts.f.pca <- prcomp(t(cnts_f), center = TRUE, scale. = TRUE, retx = TRUE)
 plot(cnts.f.pca)
+
 ##################### cnts.f.pca$x  ###############
-### contains sample level pc components, a matrix which is sample by principal components
-### from here, a new set of variable formed by the linear combination of original variables, such as pc1, pc2
+### contains sample level pc components, a matrix which is formd by sample by principal components, n by n 
+## this is to project each sample onto different pc components
 ## the pca plot is the value of each sample on the axis of different pcs 
 
 ############## cnts.f cnts.f.pca$rotation #######
 ## cnts.f.pca$rotation is the decomposition of ecah pc components at the gene level
+### from here, a new set of variable formed by the linear combination of original variables, such as pc1, pc2
 # add the gene symbol
 f.pca.symbol <- cnts.f.pca$rotation
 row.names(f.pca.symbol) <- cnts_fsym$Symbol
@@ -335,9 +337,9 @@ pca12.tpm
 
 ##################### sig altered genes pca by gene lists ##########################
 # ## Asus
-setwd("C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/")
+## setwd("C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/")
 ## ubuntu 
-## setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/")
+setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/")
 cnts.genesbeta.edger.05 <- read.csv("corr/cnts.genesbeta.edger.05.csv")
 cnts.isgs.edger.05 <- read.csv("corr/cnts.isgs.edger.05.csv")
 genesbeta.edger.05 <- read.csv("corr/genesbeta.edger.05.csv")
