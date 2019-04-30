@@ -3,20 +3,20 @@ title: "HIV Treated vs Control"
 author: "Guannan Shen"
 date: "April 28, 2019"
 output: 
-  pdf_document:
-    latex_engine: lualatex
-    number_sections: yes
-    toc: yes
-    toc_depth: 5
-  word_document:
-    toc: yes
-    toc_depth: '5'
   html_document:
     number_sections: yes
     theme: united
     toc: yes
     toc_depth: 5
     toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
 ---
 
 ```{r setup, include=FALSE, cache = FALSE}
@@ -40,7 +40,7 @@ opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw
 
 
 
-```{r libs, warning=FALSE}
+```{r libs, warning=FALSE, echo=F}
 ######################
 ## Set up workspace
 ######################
@@ -78,8 +78,10 @@ getwd()
 # Data Preprocessing
 15 HIV-infected-treated donors vs. 11 healthy controls.  
 
+Filtering was applied. The inclusion criteria is the gene must have a total counts (sum up all samples) more than or equal to the number of samples times 5.  
 
-```{r eda_qc}
+
+```{r eda_qc, echo=F}
 # import data
 cnts.raw <- read.xlsx("HIV-1_infected_HAART_treated_Raw_Counts.xlsx")
 
@@ -116,6 +118,7 @@ set <- newSeqExpressionSet(as.matrix(cnts_f),phenoData = data.frame(condition=as
 dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ condition)
 dds <- estimateSizeFactors(dds)
 ## normalization factors
+paste("size Factors of DESeq2")
 sizeFactors(dds)
 cnts.deseq2 <- counts(dds, normalized=TRUE)
 
@@ -125,6 +128,7 @@ group <- c(rep(1, 11), rep(2, 15))
 y <- DGEList(counts= as.matrix(cnts_f), group=group)
 ## normalization 
 y <- calcNormFactors(y, method = "TMM")
+paste("Scaling Factors of edgeR")
 y$samples
 cnts.edger <- edgeR::cpm(y)
 
@@ -166,6 +170,14 @@ invitro_genes[ sapply(invitro_genes, toupper) %nin% cnts_fsym$Symbol ]
 
 ```
 
+From the scaling factor, we can tell the between-samples variance is samller compared with the HIV-untreated dataset. For the previous dataset, the more the size factors differ, the more residual dependence of the variance on the mean will be found in the transformed data. **rlog** is a transformation which can perform better in these cases.  
+
+For this dataset, a variance stabilizing transformation, **vst** should be more proper.  
+
+varianceStabilizingTransformation(object, blind = FALSE, fitType = "parametric")  
+
+getVarianceStabilizedData(object)
+
 ```{r de_edger}
 # make sure y is the object from edger
 ## DE analysis of edger
@@ -180,11 +192,11 @@ et$comparison
 ## summary results
 summary(decideTests(et, p.value = 0.05,
             lfc = 0))
-paste(1706+ 2540, "genes with FDR 0.05")
+# paste(1706+ 2540, "genes with FDR 0.05")
 
 summary(decideTests(et, p.value = 0.05,
             lfc = 1))
-paste(157 + 680, "genes with FDR 0.05")
+# paste(157 + 680, "genes with FDR 0.05")
 
 summary(decideTests(et, p.value = 0.05,
             lfc = 2))
