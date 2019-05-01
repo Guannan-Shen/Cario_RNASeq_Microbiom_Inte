@@ -3,20 +3,20 @@ title: "HIV RNASeq"
 author: "Guannan Shen"
 date: "November 21, 2018"
 output: 
-  pdf_document:
-    latex_engine: lualatex
-    number_sections: yes
-    toc: yes
-    toc_depth: 5
-  word_document:
-    toc: yes
-    toc_depth: '5'
   html_document:
     number_sections: yes
     theme: united
     toc: yes
     toc_depth: 5
     toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
 ---
 
 ```{r setup, include=FALSE, cache = FALSE}
@@ -1455,7 +1455,8 @@ base::colnames(isgs.05.lin) <- var.isgs.05$Symbol
 
 head(isgs.05.lin)
 write.csv(isgs.05.lin,
-             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.05.lin.csv")
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.05.lin.csv",
+          row.names = T)
            
 var.genesbeta.05 <- base::merge(var.rld, genesbeta.edger.05, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% select(-c(Symbol.x, Symbol.y))
 dim(var.genesbeta.05)
@@ -1464,7 +1465,8 @@ genesbeta.05.lin <- t(var.genesbeta.05[2:33])
 base::colnames(genesbeta.05.lin) <- var.genesbeta.05$Symbol
 head(genesbeta.05.lin)
 write.csv(genesbeta.05.lin,
-             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.05.lin.csv")
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.05.lin.csv",
+          row.names = T)
 
 ################### make clinical as the same pid order of gene #################
 ## not the same order
@@ -1477,7 +1479,8 @@ isgs.05.lin.order <- data.frame(isgs.05.lin) %>% dplyr::mutate(pid = row.names(i
 clinical_order <- base::merge(clinical, isgs.05.lin.order, by = "pid")
 clinical_order <- clinical_order[,c(1:18,24)]
 write.csv(clinical_order,
-             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/clinical_order.csv")
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/clinical_order.csv",
+          row.names = F)
 
 ## clinical_order$pid == row.names(isgs.05.lin)
 

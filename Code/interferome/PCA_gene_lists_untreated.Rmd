@@ -134,6 +134,8 @@ y <- calcNormFactors(y, method = "TMM")
 y$samples
 cnts.edger <- edgeR::cpm(y)
 
+write.csv(cnts.edger, "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/cnts.edger.csv",
+          row.names = T)
 
 ## DE analysis of edger
 y <- estimateDisp(y)
@@ -155,7 +157,11 @@ summary(decideTests(et, p.value = 0.05,
 
 ## results summary 
 res.edger <- et$table %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
-                                 FDR = p.adjust(et$table$PValue, method = "BH") )
+                                 FDR = p.adjust(et$table$PValue, method = "BH") ) %>%
+                          dplyr::select(Symbol, everything())
+write.csv(res.edger, "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/res.edger.csv", 
+          row.names = F)
+
 
 ```
 
@@ -176,7 +182,7 @@ text(length(levels(group.plot)) + 0.5, stats::quantile( cnts.edger[genenumber, ]
      paste("log2 Fold Change:", round(res.edger[genenumber, ]$logFC,2),
              "","Adjusted p-value:",  
            format(res.edger[genenumber, ]$FDR,digits=2,scientific=TRUE ),"",
-           "Gene_ID: ", rownames(res.edger)[genenumber],
+           "Gene_ID: ", rownames(cnts.edger)[genenumber],
                                            sep = "\n"), pos = 1)
 }
 ## plot top 10
