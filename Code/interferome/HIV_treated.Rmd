@@ -84,6 +84,7 @@ Filtering was applied. The inclusion criteria is the gene must have a total coun
 ```{r eda_qc, echo=F}
 # import data
 cnts.raw <- read.xlsx("HIV-1_infected_HAART_treated_Raw_Counts.xlsx")
+dim(cnts.raw)
 
 ########### need to realign the samples ###################
 
@@ -97,11 +98,15 @@ row.names(cnts_fsym) <- NULL
 cnts_f <- cnts_fsym %>% dplyr::select(-c(Symbol, Length ) ) %>% 
             tibble::column_to_rownames("Gene_ID") %>% as.matrix()
 
-
 ########### pheno grouping ####################
 dim(cnts_f)
+ctrl <- c("Dys273",	"Dys458",	"TR1310",	"TR1407",	"TR1411",	"TR1413",	"TR1414",	"TR1441",	"TR1465",	"TR1470",	"TR1547")
 ctrl.id <-  colnames(cnts_f)[1:11]
+sum(ctrl != ctrl.id)
+
 hiv.id <- colnames(cnts_f)[12:26]
+hiv <- c("TR1540",	"TR1543",	"TR1549",	"TR1551",	"TR1584",	"TR1609",	"TR1624",	"TR1667",	"TR1745",	"TR1750",	"TR1761",	"TR1762", "TR1767",	"TR1772", "TR1778" )
+sum(hiv != hiv.id)
 
 rna.pid <- colnames(cnts_f)
 pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 11), 
@@ -162,11 +167,90 @@ example_sce <- SingleCellExperiment(
 print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
 }
 
-######### the gene list is a fair list###########
+######### the whole gene list is a fair list###########
 ## define the gene list 
 invitro_genes <- c("Mx2", "APOBEC3G", "Siglec1", "ISG15", "Bst2")
 ## turn in to upper case
 invitro_genes[ sapply(invitro_genes, toupper) %nin% cnts_fsym$Symbol ]
+
+########## a bad sample ########
+# using the function from EDASeq
+set <- newSeqExpressionSet(as.matrix(cnts.edger),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f)))
+##  general QC images  ## 
+## plotRLE from EDASeq
+## boxplots of the log-ratios of the gene-level read counts of each sample to those of a reference sample
+# (defined as the median across the samples). 
+par(mfrow = c(1,1))
+EDASeq::plotRLE(set, 
+        outline = FALSE, col=c(rep("steelblue", 11), rep("tomato", 15)), 
+        main = "Control vs. HIV-Treated RLE Plot (TMM Normalized)", 
+        xlab = "Sample", 
+        ylab = "Relative Log Ratio")
+rna.pid[21]
+
+################## delete this one ####################
+cnts_f_dele <- cnts_f[, -21]
+dim(cnts_f_dele)
+ctrl.id <-  colnames(cnts_f_dele)[1:11]
+hiv.id <- colnames(cnts_f_dele)[12:25]
+
+rna.pid <- colnames(cnts_f_dele)
+pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 11), 
+                                                     rep("HIV-Treated", 14)
+                                                     )) )
+pheno$txt %<>% relevel("Control")
+
+# using the function from EDASeq
+set <- newSeqExpressionSet(as.matrix(cnts_f_dele),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f_dele)))
+
+################# deseq2 ###########################
+## now using deseq2
+dds <- DESeqDataSetFromMatrix(countData = counts(set), colData = pData(set),design = ~ condition)
+dds <- estimateSizeFactors(dds)
+## normalization factors
+paste("size Factors of DESeq2")
+sizeFactors(dds)
+cnts.deseq2 <- counts(dds, normalized=TRUE)
+
+######## edgeR TMM ###############
+## edgeR object
+group <- c(rep(1, 11), rep(2, 14))
+y <- DGEList(counts= as.matrix(cnts_f_dele), group=group)
+## normalization 
+y <- calcNormFactors(y, method = "TMM")
+paste("Scaling Factors of edgeR")
+y$samples
+cnts.edger <- edgeR::cpm(y)
+
+########## TPM #########
+cnts.tpm <- calculateTPM(cnts_f_dele, effective_length = cnts_fsym$Length)
+
+###########3 using scater for QC EDA ##################
+rna_info <- data.frame(pid = rna.pid, Group = as.factor(c(rep("Control", 11), 
+                                                     rep("HIV-Treated", 14)
+                                                     )) )
+rna_info$Group %<>% relevel("Control")
+
+## cnts. list
+cnts.list <- list(cnts_f_dele, cnts.edger, cnts.deseq2, cnts.tpm)
+cnts.names <- c("Filtered Counts", "TMM Normalized Counts",
+                "DESeq2 Normalized Counts", "TPM Normalized Counts")
+par(mfrow = c(1,2))
+for (i in 1:4){
+  j  = cnts.list[[i]]
+  ## using scater, start with an object
+example_sce <- SingleCellExperiment(
+                 assays = list(counts = j),
+                 colData = rna_info)
+## RLE plots
+print( scater::plotRLE(example_sce, exprs_values = "counts", exprs_logged = FALSE,
+        colour_by = "Group", style = "minimal") + scale_x_discrete("Samples", labels = rna.pid) + labs(caption = paste("RLE Plot:" ,cnts.names[i]) ) )
+## pca plots
+example_sce <- SingleCellExperiment(
+                 assays = list(logcounts = j),
+                 colData = rna_info)
+print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
+}
 
 ```
 
@@ -178,13 +262,15 @@ varianceStabilizingTransformation(object, blind = FALSE, fitType = "parametric")
 
 getVarianceStabilizedData(object)
 
+From the quality control plots, "TR1750" was deleted. 
+
 ```{r de_edger}
 # make sure y is the object from edger
 ## DE analysis of edger
 y <- estimateDisp(y)
 et <- exactTest(y, pair = 1:2)
 dim(et)
-
+y$samples
 ### results
 topTags(et, n = 10, adjust.method = "BH")
 head(et$table)
@@ -200,8 +286,25 @@ summary(decideTests(et, p.value = 0.05,
 
 summary(decideTests(et, p.value = 0.05,
             lfc = 2))
-## 
+########## deleted ###########
+"TR1750"
+## import genes lists 
+isgs <- as.data.frame(read.delim("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/coreISG"))
+dim(isgs)
+genesbeta <- as.data.frame(read.delim("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/genesbeta"))
+dim(genesbeta)
+sig_res <- as.data.frame(topTags(et, n = 30, adjust.method = "BH")[[1]])
 
+write.xlsx(sig_res,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/treated/DE_results_treated.xlsx", sheetName="DE Results Treated")
+sig_res_format <- sig_res %>% data.frame() %>% rownames_to_column("Gene_ID")
+
+merge(sig_res_format,  isgs, by = "Gene_ID")
+merge(sig_res_format,  genesbeta, by = "Gene_ID")
+
+merge(sig_res_format, cnts_fsym[, c(1,2)], by = "Gene_ID") %>% 
+            dplyr::select(-Gene_ID) %>% dplyr::select( Symbol, everything())  %>% 
+                dplyr::arrange(PValue) %>% kable
 ```
 
-
+The DE analysis, only 30 out of 19454 genes are significantly altered between hiv-status. 
