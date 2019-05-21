@@ -304,7 +304,63 @@ merge(sig_res_format,  genesbeta, by = "Gene_ID")
 
 merge(sig_res_format, cnts_fsym[, c(1,2)], by = "Gene_ID") %>% 
             dplyr::select(-Gene_ID) %>% dplyr::select( Symbol, everything())  %>% 
-                dplyr::arrange(PValue) %>% kable
+                dplyr::arrange(PValue)  %>%   dplyr::mutate(Direction = ifelse(logFC > 0, 
+                                                                               "Up in HIV",
+                                                                               "Down in HIV") ) %>%
+                      kable
+
 ```
 
-The DE analysis, only 30 out of 19454 genes are significantly altered between hiv-status. 
+The DE analysis, only 30 out of 19454 genes are significantly altered between hiv-status.  
+In terms of Healthy Controls vs. HIV-Infected:  
+Comparison of groups:  2-1   
+
+[1] "1" "2"
+
+         2-1
+         
+Down    1706
+
+NotSig 15644
+
+Up      2540
+
+[1] "4246 genes with FDR 0.05"
+
+         2-1
+         
+Down     157
+
+NotSig 19053
+
+Up       680
+
+[1] "837 genes with FDR 0.05 and LogFC 1"
+
+
+```{r scatter}
+# all the results 
+res.edger <- et$table %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
+                                 FDR = p.adjust(et$table$PValue, method = "BH") )
+# label 
+group.plot <- factor(c(rep(1,11), rep(2,14)), labels = c("Health Control", "HIV-Treated"))
+## use the # No. of genes in the cnts.edger matrix
+sim_plotcounts <- function(genenumber){
+  plot(as.integer(group.plot)+ runif(ncol(cnts.edger), -0.1, 0.1), cnts.edger[genenumber, ], 
+    xlim = c(0.5, length(levels(group.plot)) + 0.8), xaxt="n" ,
+    xlab = "Groups", ylab = "Normalized Counts", main = res.edger[genenumber, ]$Symbol)
+axis(1, at = seq_along(levels(group.plot)), levels(group.plot))
+## pos below
+text(length(levels(group.plot)) + 0.5, stats::quantile( cnts.edger[genenumber, ], 0.95), 
+     paste("log2 Fold Change:", round(res.edger[genenumber, ]$logFC,2),
+             "","Adjusted p-value:",  
+           format(res.edger[genenumber, ]$FDR,digits=2,scientific=TRUE ),"",
+           "Gene_ID: ", rownames(cnts.edger)[genenumber],
+                                           sep = "\n"), pos = 1)
+}
+## plot top 10
+for(i in order(res.edger$PValue)[1:30]){
+  sim_plotcounts(i)
+}
+
+```

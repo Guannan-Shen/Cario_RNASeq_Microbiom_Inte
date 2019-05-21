@@ -162,7 +162,7 @@ gene_IFNReg <- function(gene_matrix, clinical_variable, clin_var_name){
 ```{r sum}
 ########### summary ###############
 clinical_sum <- matrix(NA, 14, 14)
-
+alpha <-  0.05
 for(i in 1:n_clinical) {
   ## number of clinical virable
   j = c(6:19)[i]
@@ -298,7 +298,8 @@ for(i in 1:n_clinical) {
 
 ## clinical_sum
 write.xlsx(clinical_sum, 
-           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/clinical_summary.xlsx")
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/clinical_summary.xlsx",
+           sheetName = paste("FDR", alpha) )
 
 clinical_sum[12:13,1] <- c("IFNalpha", "IFNbeta")
 kable(data.frame(clinical_sum ) )
@@ -306,10 +307,55 @@ kable(data.frame(clinical_sum ) )
 
 ```
 
-```{r tables}
+```{r il-6tables}
 genesbeta_il6 <- read.xlsx("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/sum/ifnbeta_IL.6.xlsx")
 kable(genesbeta_il6)
-
+################### il-6 pllots ##########################
+alpha <-  0.05
+i = 5 # for il-6
+  ## number of clinical virable
+  j = c(6:19)[i]
+  cliname = base::colnames(clinical_order)[j]
+  
+  ## linear regression
+  lin_res_isgs = gene_IFNReg(isgs.05.lin, clinical_order[,j], clinical_names[i])
+  lin_res_genesbeta = gene_IFNReg(genesbeta.05.lin, clinical_order[,j], clinical_names[i])
+  clinical = lin_res_isgs$clinical
+    ## number of genes
+  nisgs = nrow(lin_res_isgs$results)
+  ngenesbeta = nrow(lin_res_genesbeta$results)
+  ## results 
+  isgs_lm = data.frame(lin_res_isgs$results)
+  genesbeta_lm = data.frame(lin_res_genesbeta$results)
+  ## xlim
+  xrange = c(range(isgs_lm$Estimate)*1.3, range(genesbeta_lm$Estimate)*1.3)
+  ################## summary table ###################
+  ###  sig prop
+  isgs.sig.no =  sum(isgs_lm$FDR < alpha)
+  genesbeta.sig.no =  sum(genesbeta_lm$FDR < alpha)
+  ######### isgs IL-6 plots ##############
+  rownames(isgs_lm) <- isgs_lm$names
+    p_cutoff <- isgs_lm$p.value[min(which(isgs_lm$FDR >= alpha))]
+    p1 <- ggplot(isgs_lm, aes(Estimate, -log10(p.value)) ) +
+          geom_point(colour = "gray65") + 
+          geom_point(data = subset(isgs_lm, FDR < alpha & Estimate > 0 ),  
+             aes(Estimate, -log10(p.value)), colour="black") +
+          geom_point(data = subset(isgs_lm, FDR < alpha & Estimate < 0 ),  
+             aes(Estimate, -log10(p.value)), colour="gray35") +
+          geom_hline(yintercept=-log10(p_cutoff), 
+                     linetype="dashed", color = "black") +
+          geom_vline(xintercept=0, linetype="dashed", color = "black") +
+          labs(x = expression(paste("Slope" )),
+               y =  expression(paste("-",log[10]," p-value" )),
+               caption =  paste("Core ISGs: associations with ", clinical , sep = "") ) +
+          annotate(geom="text", x = max(xrange)/1.2 ,  
+                    y=-log10( p_cutoff + 0.0005), 
+                    label="FDR < 0.05",
+                    color="black") +
+          xlim( min(xrange) , max(xrange) ) + 
+          theme_bw()
+    print(p1)
+    ggsave(paste("Volcanol_Plot_ISGs_", cliname, sep = ""), width = 6, height = 9, device = "tiff", path = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/plots", dpi = 300)
 ```
 
 ### Double Check with Scatter Plot Clinical Parameter vs. Genes 
@@ -349,7 +395,152 @@ gene_clin_scatter_beta("SCYL2", "IL.6")
 
 ```
 
+### FDR 0.1 
+```{r 01sum}
+########### summary ###############
+clinical_sum <- matrix(NA, 14, 14)
+alpha <-  0.1 
+for(i in 1:n_clinical) {
+  ## number of clinical virable
+  j = c(6:19)[i]
+  cliname = base::colnames(clinical_order)[j]
+  ## linear regression
+  lin_res_isgs = gene_IFNReg(isgs.05.lin, clinical_order[,j], clinical_names[i])
+  lin_res_genesbeta = gene_IFNReg(genesbeta.05.lin, clinical_order[,j], clinical_names[i])
+  ## save data
+  
+  write.xlsx(lin_res_isgs$results,
+             paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/sum/isgs_", 
+                   cliname,".xlsx", sep = ""), sheetName= paste("ISGs_", cliname, sep = "") )
+  
+  write.xlsx(lin_res_genesbeta$results,
+             paste("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/sum/ifnbeta_", 
+                   cliname,".xlsx", sep = ""), sheetName= paste("ifnbeta_", cliname, sep = ""))
+  # }
+  ## check basic
+  if(lin_res_isgs$size == lin_res_genesbeta$size){
+    print("Good size")
+    size = lin_res_isgs$size
+  }else stop("sample size wrong")
+  if(lin_res_isgs$clinical == lin_res_genesbeta$clinical){
+    print("Good outcome")
+    clinical = lin_res_isgs$clinical
+  }else stop("clinical parameter wrong")
+  ## number of genes
+  nisgs = nrow(lin_res_isgs$results)
+  ngenesbeta = nrow(lin_res_genesbeta$results)
+  ## results 
+  isgs_lm = data.frame(lin_res_isgs$results)
+  genesbeta_lm = data.frame(lin_res_genesbeta$results)
+  ## xlim
+  xrange = c(range(isgs_lm$Estimate)*1.3, range(genesbeta_lm$Estimate)*1.3)
+  ################## summary table ###################
+  ###  sig prop
+  isgs.sig.no =  sum(isgs_lm$FDR < alpha)
+  genesbeta.sig.no =  sum(genesbeta_lm$FDR < alpha)
+  if( (isgs.sig.no >= 5) & (genesbeta.sig.no >= 5) ){
+    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = FALSE)
+    sig.p = format(prop.test.sig$p.value, digits = 2, scientific = T)
+  }else{
+    prop.test.sig = prop.test(x = c(isgs.sig.no, genesbeta.sig.no), n = c(nisgs, ngenesbeta), correct = TRUE)
+    sig.p = format(prop.test.sig$p.value, digits = 2, scientific = T)
+  }
+  ########### volcano plots ################
+  if(min(isgs_lm$FDR) < alpha){
+    rownames(isgs_lm) <- isgs_lm$names
+    p_cutoff <- isgs_lm$p.value[min(which(isgs_lm$FDR >= alpha))]
+    p1 <- ggplot(isgs_lm, aes(Estimate, -log10(p.value)) ) +
+          geom_point(colour = "gray65") + 
+          geom_point(data = subset(isgs_lm, FDR < alpha & Estimate > 0 ),  
+             aes(Estimate, -log10(p.value)), colour="black") +
+          geom_point(data = subset(isgs_lm, FDR < alpha & Estimate < 0 ),  
+             aes(Estimate, -log10(p.value)), colour="gray35") +
+          geom_hline(yintercept=-log10(p_cutoff), 
+                     linetype="dashed", color = "black") +
+          geom_vline(xintercept=0, linetype="dashed", color = "black") +
+          labs(x = expression(paste("Slope" )),
+               y =  expression(paste("-",log[10]," p-value" )),
+               caption =  paste("Core ISGs: associations with ", clinical , sep = "") ) +
+          annotate(geom="text", x = max(xrange)/1.2 ,  
+                    y=-log10( p_cutoff - 0.02), 
+                    label="FDR < 0.1",
+                    color="black") +
+          xlim( min(xrange) , max(xrange) ) + 
+          theme_bw()
+       
+    ggsave(paste("Volcanol_Plot_ISGs_01_", cliname, sep = ""), width = 6, height = 9, device = "tiff", path = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/plots", dpi = 300)
+    print(p1)
+  } else{print("No Sig.")}
+  
+  if(min(genesbeta_lm$FDR) < alpha){
+    rownames(genesbeta_lm) <- genesbeta_lm$names
+    p_cutoff2 <- genesbeta_lm$p.value[min(which(genesbeta_lm$FDR >= alpha))]
+    p2 <- ggplot(genesbeta_lm, aes(Estimate, -log10(p.value)) ) +
+          geom_point(colour = "gray65") + 
+          geom_point(data = subset(genesbeta_lm, FDR < alpha & Estimate > 0 ),  
+             aes(Estimate, -log10(p.value)), colour="black") +
+          geom_point(data = subset(genesbeta_lm, FDR < alpha & Estimate < 0 ),  
+             aes(Estimate, -log10(p.value)), colour="gray35") +
+          geom_hline(yintercept=-log10(p_cutoff2), 
+                     linetype="dashed", color = "black") +
+          geom_vline(xintercept=0, linetype="dashed", color = "black") +
+          labs(x = expression(paste("Slope" )),
+               y =  expression(paste("-",log[10]," p-value" )),
+               caption =  paste("IFN-Beta Genes: associations with ", clinical , sep = "") ) +
+          annotate(geom="text", x = max(xrange)/1.2 ,  
+                   y=-log10( p_cutoff2 - 0.02 ), 
+                    label="FDR < 0.1",
+                    color="black") +
+          xlim( min(xrange) , max(xrange) ) + 
+          theme_bw()
+    
+    ggsave(paste("Volcanol_Plot_IFNBeta_01_", cliname, sep = ""), width = 6, height = 9, device = "tiff", path = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/plots", dpi = 300)
+    print(p2)
+  } else{print("No Sig.")}
+  
+  ## positive prop
+  isgs.pos.no = sum(isgs_lm$Estimate > 0 & isgs_lm$FDR < alpha)
+  genesbeta.pos.no = sum(genesbeta_lm$Estimate > 0 & genesbeta_lm$FDR < alpha)
+    if(isgs.sig.no == 0 | genesbeta.sig.no == 0 ) {
+       pos.p = NA
+    }else{
+     if( (isgs.pos.no >= 5) & (genesbeta.pos.no >= 5) ){
+       prop.test.pos = prop.test(x = c(isgs.pos.no, genesbeta.pos.no), 
+                              n = c(isgs.sig.no, genesbeta.sig.no), correct = FALSE)
+       pos.p = format(prop.test.pos$p.value, digits = 2, scientific = T)
+      }else{
+       prop.test.pos = prop.test(x = c(isgs.pos.no, genesbeta.pos.no), 
+                              n = c(isgs.sig.no, genesbeta.sig.no), correct = TRUE)
+       pos.p = format(prop.test.pos$p.value, digits = 2, scientific = T)
+      }
+    }
+  ## If you check prop.test, chisq.test and z-test on your data then they all give you the same p-value
+  ## continuity correction if anyone less than 5
+  ## the clinical summary table 
+  print(clinical)
+  clinical_sum[i, ] <- c(clinical, size, nisgs, ngenesbeta, isgs.sig.no,
+                         round(isgs.sig.no/nisgs, 2) , genesbeta.sig.no, 
+                         round(genesbeta.sig.no/ngenesbeta,2) , sig.p, isgs.pos.no,
+                         round(isgs.pos.no/isgs.sig.no,2),  genesbeta.pos.no,
+                         round(genesbeta.pos.no/genesbeta.sig.no,2) , 
+                         pos.p)
+  
+  colnames(clinical_sum) <- c("Clinical Parameter", "Sample Size", "ISGs", "IFN-Beta", "No. Sig. ISGs",
+                              "ISGs Sig.", "No. Sig. IFN-Betas",
+                              "IFNbeta Sig.", "p value", "No. Pos. ISGs", 
+                              "ISGs Pos. Prop.", "No. Pos. IFN-Betas",
+                              "IFNbeta Pos. Prop.", "p value (Pos)")
+}
 
+
+## clinical_sum
+write.xlsx(clinical_sum, 
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/clinical_summary_01.xlsx",
+           sheetName = paste("FDR", alpha) )
+
+clinical_sum[12:13,1] <- c("IFNalpha", "IFNbeta")
+kable(data.frame(clinical_sum ) )
+```
 
 ### Double Check with Normalized Counts Plot
 This plot can be used as quality control.  
