@@ -212,21 +212,28 @@ clinical_names
 n_clinical
 clinical_sum <- matrix(NA, 14,8)
 # genelists
-isgs <- as.data.frame(read.delim("coreISG"))
-genesbeta <- as.data.frame(read.delim("genesbeta"))
+isgs <- as.data.frame(read.delim("coreISG252"))
+genesbeta <- as.data.frame(read.delim("genesbeta424"))
 
 # all DE results for genes lists ##
+################# THIS need to be updated with new gene lists #####################
 isgs_DE <- read.xlsx( "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/ISGs_DEanalysis_results.xlsx")
+dim(isgs_DE)
 genesbeta_DE <- read.xlsx("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/IFNbeta_DEanalysis_results.xlsx")
+dim(genesbeta_DE)
 
 ############### cnts for genes lists fdr 0.05 ##################
 setwd("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/")
 cnts.genesbeta.edger.05 <- read.csv("corr/cnts.genesbeta.edger.05.csv")
+dim(cnts.genesbeta.edger.05)
 cnts.isgs.edger.05 <- read.csv("corr/cnts.isgs.edger.05.csv")
+dim(cnts.isgs.edger.05)
 
 ## DE results
 genesbeta.edger.05 <- read.csv("corr/genesbeta.edger.05.csv")
+dim(genesbeta.edger.05)
 isgs.edger.05 <- read.csv("corr/isgs.edger.05.csv")
+dim(isgs.edger.05)
 
 
 ```
@@ -257,14 +264,24 @@ de_scatter <- function(de, label_fdr, label_fc, name){
   
 }
 
-
+dir <- "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Summary/Untreated/plots/"
 de_scatter(isgs_DE, 1e-5, 2, "Core ISGs")
+ggsave(paste(dir, "volcano_isgs_DE_246.tiff", sep = "") , dpi = 300)
 de_scatter(genesbeta_DE , 1e-5, 2, "IFN-Beta Genes")
+ggsave(paste(dir, "volcano_Beta_DE_406.tiff", sep = "") , dpi = 300)
 
 p1 <- de_scatter(isgs_DE, 1e-5, 2, "Core ISGs")
 p2 <- de_scatter(genesbeta_DE , 1e-5, 2, "IFN-Beta Genes")
- grid.newpage()
- grid.draw(rbind(ggplotGrob(p1), ggplotGrob(p2), size = "last"))
+grid.newpage()
+g <- rbind(ggplotGrob(p1), ggplotGrob(p2), size = "last")
+grid.draw(g)
+
+# pdf(paste(dir, "volcano_Beta_ISGS_DE.pdf", sep = ""), height = 11, width = 8.5, paper = "letter")
+# grid.newpage()
+# g <- rbind(ggplotGrob(p1), ggplotGrob(p2), size = "last")
+# print(g)
+# # insert ggplot code
+# dev.off()
   
 ```
 

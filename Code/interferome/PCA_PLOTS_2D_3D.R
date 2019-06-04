@@ -524,7 +524,6 @@ for(i in 1:n_clinical) {
 }
 write.csv(pc1_sum, "corr/pc1_sum.csv", row.names = F)
 pc1_sum <- as.data.frame(pc1_sum)
-pc1_sum$`p-value` <- as.numeric(pc1_sum$`p-value`)
 
 ## diagnosis
 

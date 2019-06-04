@@ -99,8 +99,10 @@ pheno$txt %<>% relevel("Control")
 
 ```{r data}
 # rlg
-isgs.05.lin <- read.csv("isgs.05.lin.csv", row.names = 1)
-genesbeta.05.lin <- read.csv("genesbeta.05.lin.csv", row.names = 1)
+isgs.05.lin <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.05.lin.csv", row.names = 1)
+dim(isgs.05.lin)
+genesbeta.05.lin <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.05.lin.csv", row.names = 1)
+dim(genesbeta.05.lin)
 
 # clinical data
 clinical_order <- read.csv("clinical_order.csv")
@@ -360,7 +362,7 @@ i = 5 # for il-6
 
 ### Double Check with Scatter Plot Clinical Parameter vs. Genes 
 
-```{r vs_clin, echo=F}
+```{r vs_clin, echo=F, eval=F}
 genesbeta_il6 <- c("SCYL2", "C16orf91", "VIMP", "PTPRN2", "NUP54", "GTF2F2", "EBPL", "PTS")
 # genesbeta.05.lin
 # clinical_order

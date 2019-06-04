@@ -348,7 +348,7 @@ plotCounts(dds, gene=which.min(res$padj), intgroup="condition",
            main = "EOMES")
 plotCounts(dds, gene=which.min(res$padj), intgroup="condition")
 
-## DE analysis of edger
+#####################3  DE analysis of edger ######################
 y <- estimateDisp(y)
 et <- exactTest(y, pair = 1:2)
 dim(et)
@@ -370,11 +370,10 @@ summary(decideTests(et, p.value = 0.05,
 
 ## counts and results from edgeR
 ## the counts table from edgeR is cnts.edger
-colnames(et$table)
-res.edger <- et$table %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
-                                 FDR = p.adjust(et$table$PValue, method = "BH") )
+res.edger <- et$table %>% as.data.frame() %>% dplyr::mutate(Symbol = cnts_fsym$Symbol,
+                          FDR = p.adjust(et$table$PValue, method = "BH") ) 
+res.edger$Gene_ID <- rownames(et$table)
 rownames(res.edger) <- rownames(et$table)
-head(res.edger)
 write.csv(res.edger,
           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/res.edger.csv",
           row.names = F)
@@ -448,7 +447,7 @@ kable(head(res.deseq.sum1,10), main = "Top10 Genes Control Vs HIV Untreated",
 ############## core ISGs ################
 # isgs <- as.data.frame(read.delim("coreISG"))
 # new updated gene lists 
-isgs <- as.data.frame(read.delim("coreISG252"))
+isgs <- as.data.frame(read.delim("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/coreISG252"))
 dim(isgs)
 ## DE genes in the core ISGs list 
 ## directions of regulation 
@@ -553,7 +552,7 @@ EnhancedVolcano(isgs.de,
 ######### Beta specific ##############
 # genesbeta <- as.data.frame(read.delim("genesbeta"))
 # new updated gene lists
-genesbeta <- as.data.frame(read.delim("genesbeta424"))
+genesbeta <- as.data.frame(read.delim("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/genesbeta424"))
 dim(genesbeta)
 
 ## DE genes in the core genesbeta list 
@@ -564,8 +563,10 @@ dim(genesbeta.de)
 ##  all symbols are equal, no 0 fold change
 sum(genesbeta.de$Symbol.x != genesbeta.de$Symbol.y)
 genesbeta.de[ which(genesbeta.de$Symbol.x != genesbeta.de$Symbol.y),]
+## 
+"SEP15 vs. 15-Sep the Gene Symbol" 
 sum(genesbeta.de$Log2FoldChange == 0)
-## 423 genes table 
+## 423 genes table /406 genestable 
 kable(genesbeta.de[, c(1:5,7)], digits = c(2,2,2,30,30), col.names = 
         c("Gene_ID", "Symbol", "Log2FoldChange", "pvalue", "padj","Direction"))
 
@@ -628,6 +629,13 @@ For the IFN-Beta specific genes list, there are `r dim(genesbeta)[1]` genes, whe
 ### Association between genes and clinical outcomes
 
 ```{r asso}
+############## check the filtering of new gene lists #################
+sum(isgs$Gene_ID %in% rownames(cnts.edger) )
+nisgs <- sum(isgs$Gene_ID %in% rownames(cnts.edger) )
+sum(genesbeta$Gene_ID %in% rownames(cnts.edger) )
+ngenesbeta <- sum(genesbeta$Gene_ID %in% rownames(cnts.edger) )
+
+################ deseq2 #########################
 ## check the counts of gene list
 cnts.geneid <- rownames_to_column(data.frame(cnts.deseq2), var = "Gene_ID")
 dim(cnts.geneid)
@@ -697,6 +705,7 @@ var.cnts.rld <- assay(rld)
 ## get linear model ready cnts for core isgs and beta specific
 var.rld <- rownames_to_column(data.frame(var.cnts.rld))
 colnames(var.rld)[1] <- c("Gene_ID")
+dim(var.rld)
 
 ## gene level dataset
 var.isgs <- base::merge(var.rld, isgs.de, by = "Gene_ID") %>% dplyr::mutate(Symbol = Symbol.x) %>% 
@@ -759,7 +768,7 @@ kgbeta3$cluster
 ## import age, gender and clinical outcomes
 ## by pid
 ## basic clinical data
-basic_cli_CH <- read.delim("Basic_clinical_control_infected_untreated")
+basic_cli_CH <- read.delim("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/Basic_clinical_control_infected_untreated")
 colnames(basic_cli_CH) <- c("pid", "sex", "age", "CD4_Counts", "Plasma_Viral_Load")
 
 # check pid
@@ -776,6 +785,7 @@ rownames(isgs.rld.raw) <- NULL
 ## combine gene counts and clinical data 
 isgs.rld.lin <- base::merge(isgs.rld.raw, basic_cli_CH, by = "pid")
 dim(isgs.rld.lin)
+isgs.rld.lin
 
 ##### sample level dataset genesbeta
 genesbeta.rld.raw <- as.matrix(t(var.genesbeta[,2:33])) 
@@ -833,19 +843,20 @@ gene_FunReg <- function(gene_matrix, clinical_variable, genelistname,clin_var_na
 ############# viral load ####################
 ## after rlog  the count data to the log2 scale 
 ## whole isgs 
-gene_FunReg(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,235], "Core ISGs", "Plasma Viral Load")
+## now isgs has 246 genes 
+gene_FunReg(as.matrix(isgs.rld.lin[,2:(nisgs + 1)]), isgs.rld.lin[,(nisgs + 5)], "Core ISGs", "Plasma Viral Load")
 
 ## betas
-gene_FunReg(as.matrix(genesbeta.rld.lin[,2:424]), genesbeta.rld.lin[,428], "IFN-beta Genes", "Plasma Viral Load")
+gene_FunReg(as.matrix(genesbeta.rld.lin[,2:(ngenesbeta + 1)]), genesbeta.rld.lin[,(ngenesbeta + 5)], "IFN-beta Genes", "Plasma Viral Load")
 
 
-isgs.rld.lin[,235] == genesbeta.rld.lin[,428]
+isgs.rld.lin[,(nisgs + 5)] == genesbeta.rld.lin[,(ngenesbeta + 5)]
 ################# CD4 Counts #################
 ## whole isgs 
-gene_FunReg(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
+gene_FunReg(as.matrix(isgs.rld.lin[,2:(nisgs + 1)]), isgs.rld.lin[,(nisgs + 4)], "Core ISGs", "CD4 Counts")
 
 ## betas
-gene_FunReg(as.matrix(genesbeta.rld.lin[,2:424]), genesbeta.rld.lin[,427], "IFN-beta Genes", "CD4 Counts")
+gene_FunReg(as.matrix(genesbeta.rld.lin[,2:(ngenesbeta + 1)]), genesbeta.rld.lin[,(ngenesbeta + 4)], "IFN-beta Genes", "CD4 Counts")
 
 ```
 
@@ -892,10 +903,10 @@ gene_FunRegRaw <- function(gene_matrix, clinical_variable, genelistname,clin_var
 ### cd4 counts
 ################# CD4 Counts #################
 ## whole isgs 
-isgs.cd4 <- gene_FunRegRaw(as.matrix(isgs.rld.lin[,2:231]), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
+isgs.cd4 <- gene_FunRegRaw(as.matrix(isgs.rld.lin[,2:(nisgs + 1)]), isgs.rld.lin[,(nisgs + 4)], "Core ISGs", "CD4 Counts")
 
 ## betas
-genesbeta.cd4 <- gene_FunRegRaw(as.matrix(genesbeta.rld.lin[,2:424]), genesbeta.rld.lin[,427], "IFN-beta Genes", "CD4 Counts")
+genesbeta.cd4 <- gene_FunRegRaw(as.matrix(genesbeta.rld.lin[,2:(ngenesbeta + 1)]), genesbeta.rld.lin[,(ngenesbeta + 4)], "IFN-beta Genes", "CD4 Counts")
 
 ## enchanced volcano plots
 ## volcano plot
@@ -1022,7 +1033,7 @@ res.edger.05.1$Gene_ID <- rownames(res.edger.05.1)
 dim(res.edger.05.1)
 ## merge the DE list with predefined genelist 
 ############################ core ISGs#############################
-isgs.edger.05 <- base::merge(res.edger.05, isgs, by = "Gene_ID") 
+isgs.edger.05 <- base::merge(res.edger.05, isgs, by = "Gene_ID") %>% dplyr::arrange(PValue)
 dim(isgs.edger.05)
 write.csv(isgs.edger.05,
              "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.edger.05.csv")
@@ -1077,7 +1088,7 @@ EnhancedVolcano(isgs.edger.05 ,
 ############################ ifn beta genes ############################# 
 ## DE genes in the core genesbeta list 
 ## directions of regulation 
-genesbeta.edger.05 <- base::merge(res.edger.05, genesbeta, by = "Gene_ID") 
+genesbeta.edger.05 <- base::merge(res.edger.05, genesbeta, by = "Gene_ID") %>% dplyr::arrange(PValue)
 dim(genesbeta.edger.05)
 write.csv(genesbeta.edger.05,
              "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.edger.05.csv")
@@ -1126,7 +1137,7 @@ meanSdPlot(as.matrix(var.cnts.rld), main="rlog")
 plot(1:2000, rep(5,2000), type = "l", main = "ideal")
 
 ## check number of participants in the association data
-nrow(isgs.rld.lin[,2:231])
+nrow(isgs.rld.lin[,2:(nisgs + 1)])
 
 ## make data ready for linear regression
 rlog.isgs.05.raw <- as.matrix(t(rlog.isgs.05[,2:33])) 
@@ -1158,24 +1169,24 @@ rlog.genesbeta.05.1.raw <- data.frame(rlog.genesbeta.05.1.raw)
 ## run test association 
 ############ viral load ################
 ## whole isgs 
-gene_FunReg(as.matrix(rlog.isgs.05.raw), isgs.rld.lin[,235], "Core ISGs", "Plasma Viral Load")
-gene_FunReg(as.matrix(rlog.isgs.05.1.raw), isgs.rld.lin[,235], "Core ISGs", "Plasma Viral Load")
+gene_FunReg(as.matrix(rlog.isgs.05.raw), isgs.rld.lin[,(nisgs + 5)], "Core ISGs", "Plasma Viral Load")
+gene_FunReg(as.matrix(rlog.isgs.05.1.raw), isgs.rld.lin[,(nisgs + 5)], "Core ISGs", "Plasma Viral Load")
 
 
 ## betas
-gene_FunReg(as.matrix(rlog.genesbeta.05.raw), isgs.rld.lin[,235], "IFN-beta Genes", "Plasma Viral Load")
-gene_FunReg(as.matrix(rlog.genesbeta.05.1.raw), isgs.rld.lin[,235], "IFN-beta Genes", "Plasma Viral Load")
+gene_FunReg(as.matrix(rlog.genesbeta.05.raw), isgs.rld.lin[,(nisgs + 5)], "IFN-beta Genes", "Plasma Viral Load")
+gene_FunReg(as.matrix(rlog.genesbeta.05.1.raw), isgs.rld.lin[,(nisgs + 5)], "IFN-beta Genes", "Plasma Viral Load")
 
 
-isgs.rld.lin[,235] == genesbeta.rld.lin[,428]
+isgs.rld.lin[,(nisgs + 5)] == genesbeta.rld.lin[,(ngenesbeta + 5)]
 ################# CD4 Counts #################
 ## whole isgs 
-gene_FunReg(as.matrix(rlog.isgs.05.raw), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
-gene_FunReg(as.matrix(rlog.isgs.05.1.raw), isgs.rld.lin[,234], "Core ISGs", "CD4 Counts")
+gene_FunReg(as.matrix(rlog.isgs.05.raw), isgs.rld.lin[,(nisgs + 4)], "Core ISGs", "CD4 Counts")
+gene_FunReg(as.matrix(rlog.isgs.05.1.raw), isgs.rld.lin[,(nisgs + 4)], "Core ISGs", "CD4 Counts")
 
 ## betas
-gene_FunReg(as.matrix(rlog.genesbeta.05.raw), isgs.rld.lin[,234], "IFN-beta Genes", "CD4 Counts")
-gene_FunReg(as.matrix(rlog.genesbeta.05.1.raw), isgs.rld.lin[,234], "IFN-beta Genes", "CD4 Counts")
+gene_FunReg(as.matrix(rlog.genesbeta.05.raw), isgs.rld.lin[,(nisgs + 4)], "IFN-beta Genes", "CD4 Counts")
+gene_FunReg(as.matrix(rlog.genesbeta.05.1.raw), isgs.rld.lin[,(nisgs + 4)], "IFN-beta Genes", "CD4 Counts")
 
 
 ######### scatter plot ######################
@@ -1183,7 +1194,7 @@ gene_FunReg(as.matrix(rlog.genesbeta.05.1.raw), isgs.rld.lin[,234], "IFN-beta Ge
 ######### viral load #####
 ########## ifn beta
 scatter_vl_beta <- function(Symbol){
-ggplot(mapping = aes(x = isgs.rld.lin[,235], 
+ggplot(mapping = aes(x = isgs.rld.lin[,(nisgs + 5)], 
                      y = rlog.genesbeta.05.1.raw[,which(colnames(rlog.genesbeta.05.1.raw) %in% Symbol) ])) + 
   ylab("rlog transformed counts") +
   xlab("Blood HIV Viral Load") +
@@ -1197,7 +1208,7 @@ ggplot(mapping = aes(x = isgs.rld.lin[,235],
     axis.title.y = element_text(color="black", size=12, face="bold"),
     axis.text.x = element_text(face="bold", color="black", size=10, angle=0),
     axis.text.y = element_text(face="bold", color="black", size=10, angle=0) ) +
-    annotate("text", x = mean(isgs.rld.lin[,234]), 
+    annotate("text", x = mean(isgs.rld.lin[,(nisgs + 5)]), 
              y = quantile(rlog.genesbeta.05.1.raw[,which(colnames(rlog.genesbeta.05.1.raw) %in% Symbol) ], 0.95), 
              label = Symbol)
 
@@ -1207,7 +1218,8 @@ for( i in c("THOC3", "AQP3")){
 }
 ################### cd4 counts #####################
 ############# core ISGs ############# 
-p.irs1 <-  ggplot(mapping = aes(x = isgs.rld.lin[,234], y = rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% "IRS1") ])) + 
+p.irs1 <-  ggplot(mapping = aes(x = isgs.rld.lin[,(nisgs + 4)], 
+                                y = rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% "IRS1") ])) + 
   ylab("rlog transformed counts") +
   xlab("Blood CD4 counts") +
   geom_point(colour = "gray15", size = 2, shape = 20) +
@@ -1220,13 +1232,14 @@ p.irs1 <-  ggplot(mapping = aes(x = isgs.rld.lin[,234], y = rlog.isgs.05.raw[,wh
     axis.title.y = element_text(color="black", size=12, face="bold"),
     axis.text.x = element_text(face="bold", color="black", size=10, angle=0),
     axis.text.y = element_text(face="bold", color="black", size=10, angle=0) ) +
-    annotate("text", x = mean(isgs.rld.lin[,234]), 
+    annotate("text", x = mean(isgs.rld.lin[,(nisgs + 4)]), 
              y = quantile(rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% "IRS1") ], 0.95), 
              label = "IRS1")
 p.irs1 
 
 scatter_cd4counts_isgs <- function(Symbol){
-ggplot(mapping = aes(x = isgs.rld.lin[,234], y = rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% Symbol) ])) + 
+ggplot(mapping = aes(x = isgs.rld.lin[,(nisgs + 4)], 
+                     y = rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% Symbol) ])) + 
   ylab("rlog transformed counts") +
   xlab("Blood CD4 counts") +
   geom_point(colour = "gray15", size = 2, shape = 20) +
@@ -1239,7 +1252,7 @@ ggplot(mapping = aes(x = isgs.rld.lin[,234], y = rlog.isgs.05.raw[,which(colname
     axis.title.y = element_text(color="black", size=12, face="bold"),
     axis.text.x = element_text(face="bold", color="black", size=10, angle=0),
     axis.text.y = element_text(face="bold", color="black", size=10, angle=0) ) +
-    annotate("text", x = mean(isgs.rld.lin[,234]), 
+    annotate("text", x = mean(isgs.rld.lin[,(nisgs + 4)]), 
              y = quantile(rlog.isgs.05.raw[,which(colnames(rlog.isgs.05.raw) %in% Symbol) ], 0.95), 
              label = Symbol)
 
@@ -1404,8 +1417,10 @@ sum(res.edger$Symbol != cnts_fsym$Symbol )
 paste("Using Symbol as identifier")
   ######### isgs #############
 isgs.edger <- res.edger[ res.edger$Symbol %in% isgs$Symbol, ]
+nrow(isgs.edger)
 nrow(isgs.edger) == nrow(isgs)
 ## 117 genes out of 230 FDR 0.05 in ISGs.
+## now 126 out of 246 out of 252  
 nrow(isgs.edger[ isgs.edger$FDR <= 0.05, ]  )
 ## ranked by logFC
 isgs.save <- isgs.edger[base::order(isgs.edger$logFC, decreasing = TRUE), c(4,1,5)]
@@ -1416,12 +1431,16 @@ write.xlsx(isgs.save,
            sheetName="ISGs Results")
 
   ########  genes beta ##############
+genesbeta[genesbeta$Symbol == "SEP15", ]
+which(genesbeta$Symbol == "SEP15")
+"15-Sep" %in% res.edger$Symbol
+genesbeta[genesbeta$Symbol == "SEP15", 2] <- "15-Sep"
 genesbeta.edger <- res.edger[ res.edger$Symbol %in% genesbeta$Symbol, ]
-genesbeta$Symbol [genesbeta$Symbol %nin%res.edger$Symbol]
-genesbeta.edger[423,] <- res.edger[row.names(res.edger) ==  genesbeta$Gene_ID [genesbeta$Symbol %nin%res.edger$Symbol] , ]
+nrow(genesbeta.edger)
+
 nrow(genesbeta.edger) == nrow(genesbeta)
 # 130 genes out of 423 FDR IFN-beta genes.
-genesbeta.edger[423,4] <- genesbeta$Symbol [genesbeta$Symbol %nin%res.edger$Symbol]
+# genesbeta.edger[423,4] <- genesbeta$Symbol [genesbeta$Symbol %nin%res.edger$Symbol]
 nrow(isgs.edger[ genesbeta.edger$FDR <= 0.05, ]  )
 
 genesbeta.save <- genesbeta.edger[base::order(genesbeta.edger$logFC, decreasing = TRUE), c(4,1,5)]
@@ -1472,16 +1491,31 @@ write.csv(genesbeta.05.lin,
              "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.05.lin.csv",
           row.names = T)
 
+################### cnts edger of gene lists fdr 005 ###############
+cnts.isgs.edger.05 <- base::merge(cnts.edger, isgs.edger.05[, 1:2], by = "Gene_ID") %>% 
+                 select(-c(Symbol, logFC)) %>% column_to_rownames("Gene_ID")
+dim(cnts.isgs.edger.05)
+write.csv(cnts.isgs.edger.05,
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.isgs.edger.05.csv",
+          row.names = T)
+
+cnts.genesbeta.edger.05 <- base::merge(cnts.edger, genesbeta.edger.05[, 1:2], by = "Gene_ID") %>% 
+                 select(-c(Symbol, logFC)) %>% column_to_rownames("Gene_ID")
+dim(cnts.genesbeta.edger.05)
+write.csv(cnts.genesbeta.edger.05,
+             "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/cnts.genesbeta.edger.05.csv",
+          row.names = T)
 ################### make clinical as the same pid order of gene #################
 ## not the same order
 ## check
 sum(as.matrix(rlog.isgs.05.raw) != isgs.05.lin)
-sum(isgs.rld.lin[,234] != clinical[,6])
+sum(isgs.rld.lin[,(nisgs + 4)] != clinical[,6])
 sum(isgs.rld.lin$age == clinical$age)
 ## 
 isgs.05.lin.order <- data.frame(isgs.05.lin) %>% dplyr::mutate(pid = row.names(isgs.05.lin))
 clinical_order <- base::merge(clinical, isgs.05.lin.order, by = "pid")
-clinical_order <- clinical_order[,c(1:18,24)]
+clinical_order <- clinical_order[,c(1:18,24:25)]
+
 write.csv(clinical_order,
              "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/clinical_order.csv",
           row.names = F)
