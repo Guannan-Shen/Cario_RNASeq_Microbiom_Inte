@@ -446,7 +446,9 @@ kable(head(res.deseq.sum1,10), main = "Top10 Genes Control Vs HIV Untreated",
 
 ## import pre-defined gene lists 
 ############## core ISGs ################
-isgs <- as.data.frame(read.delim("coreISG"))
+# isgs <- as.data.frame(read.delim("coreISG"))
+# new updated gene lists 
+isgs <- as.data.frame(read.delim("coreISG252"))
 dim(isgs)
 ## DE genes in the core ISGs list 
 ## directions of regulation 
@@ -549,7 +551,9 @@ EnhancedVolcano(isgs.de,
         )
 
 ######### Beta specific ##############
-genesbeta <- as.data.frame(read.delim("genesbeta"))
+# genesbeta <- as.data.frame(read.delim("genesbeta"))
+# new updated gene lists
+genesbeta <- as.data.frame(read.delim("genesbeta424"))
 dim(genesbeta)
 
 ## DE genes in the core genesbeta list 

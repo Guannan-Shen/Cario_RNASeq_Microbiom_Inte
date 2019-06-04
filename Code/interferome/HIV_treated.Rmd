@@ -186,6 +186,7 @@ EDASeq::plotRLE(set,
         main = "Control vs. HIV-Treated RLE Plot (TMM Normalized)", 
         xlab = "Sample", 
         ylab = "Relative Log Ratio")
+## this should be deleted
 rna.pid[21]
 
 ################## delete this one ####################
@@ -358,9 +359,119 @@ text(length(levels(group.plot)) + 0.5, stats::quantile( cnts.edger[genenumber, ]
            "Gene_ID: ", rownames(cnts.edger)[genenumber],
                                            sep = "\n"), pos = 1)
 }
-## plot top 10
+## plot top 30
 for(i in order(res.edger$PValue)[1:30]){
   sim_plotcounts(i)
+}
+
+## check the outlier
+outliers <- c("SNORD3A", "SNORA12", "MLLT6", "NMT2",
+                                          "MAN2C1", "EDRF1-AS1", "CTD-2373H9.3",
+                                          "RP3-522J7.7", "RP11-848P1.4", "LINC00854")
+# get the gennumber of outliers
+out_number <- res.edger[order(res.edger$PValue)[1:30], ] %>% rownames_to_column("Num") %>% 
+   dplyr::filter(Symbol %in% outliers)
+# get cnts especially for healthy controls
+cnts_out <- cnts.edger[as.numeric(out_number$Num), 1:11] %>% as.data.frame() 
+
+#
+out_id <- NULL
+for(i in 1: nrow(cnts_out)){
+  out_id <- c(out_id, colnames(cnts_out)[cnts_out[i, ] == max(cnts_out[i,])])
+}
+length(out_id)
+out_id
+
+
+# 
+kable(cnts_out[, 1:7])
+paste("Basically, TR1310 is the outlier based on the grouped scattered plot")
+
+```
+
+# Final Analysis
+According to the quality control plots, "TR1750" in HIV-treated was deleted.  
+According to the PCA plots and grouped scatter plots of top DE genes, "TR1310" in healthy controls should be deleted. 
+
+
+```{r final}
+# this one should be further deleted based on 
+# cnts_f_dele
+which( rna.pid %in% "TR1310" )
+
+########## need to double check by the pca plots scater::plotPCA ################## 
+paste("Before Deletion")
+for (i in 2){
+  j  = cnts.list[[i]]
+  ## using scater, start with an object
+example_sce <- SingleCellExperiment(
+                 assays = list(counts = j),
+                 colData = rna_info)
+## RLE plots
+print( scater::plotRLE(example_sce, exprs_values = "counts", exprs_logged = FALSE,
+        colour_by = "Group", style = "minimal") + scale_x_discrete("Samples", labels = rna.pid) + labs(caption = paste("RLE Plot:" ,cnts.names[i]) ) )
+## pca plots
+example_sce <- SingleCellExperiment(
+                 assays = list(logcounts = j),
+                 colData = rna_info)
+print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
+}
+
+
+################## delete this one ####################
+cnts_f_f <- cnts_f_dele[, -3]
+dim(cnts_f_f)
+ctrl.id <-  colnames(cnts_f_f)[1:10]
+hiv.id <- colnames(cnts_f_f)[11:24]
+
+rna.pid <- colnames(cnts_f_f)
+pheno <- data.frame(pid = rna.pid, txt = as.factor(c(rep("Control", 10), 
+                                                     rep("HIV-Treated", 14)
+                                                     )) )
+pheno$txt %<>% relevel("Control")
+
+# using the function from EDASeq
+set <- newSeqExpressionSet(as.matrix(cnts_f_f),phenoData = data.frame(condition=as.factor(pheno$txt), row.names=colnames(cnts_f_f)))
+
+# 
+######## edgeR TMM ###############
+## edgeR object
+group <- c(rep(1, 10), rep(2, 14))
+y <- DGEList(counts= as.matrix(cnts_f_f), group=group)
+## normalization 
+y <- calcNormFactors(y, method = "TMM")
+paste("Scaling Factors of edgeR")
+y$samples
+# the TMM normalized Counts
+cnts.edger <- edgeR::cpm(y)
+
+## cnts. list
+# all remains the sames other than cnts.edger
+# since we will only use edger for downstream analysis
+cnts.list <- list(cnts_f_dele, cnts.edger, cnts.deseq2, cnts.tpm)
+cnts.names <- c("Filtered Counts", "TMM Normalized Counts",
+                "DESeq2 Normalized Counts", "TPM Normalized Counts")
+par(mfrow = c(1,2))
+
+rna_info <- data.frame(pid = rna.pid, Group = as.factor(c(rep("Control", 10), 
+                                                     rep("HIV-Treated", 14)
+                                                     )) )
+rna_info$Group %<>% relevel("Control")
+
+for (i in 2){
+  j  = cnts.list[[i]]
+  ## using scater, start with an object
+example_sce <- SingleCellExperiment(
+                 assays = list(counts = j),
+                 colData = rna_info)
+## RLE plots
+print( scater::plotRLE(example_sce, exprs_values = "counts", exprs_logged = FALSE,
+        colour_by = "Group", style = "minimal") + scale_x_discrete("Samples", labels = rna.pid) + labs(caption = paste("RLE Plot:" ,cnts.names[i]) ) )
+## pca plots
+example_sce <- SingleCellExperiment(
+                 assays = list(logcounts = j),
+                 colData = rna_info)
+print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + labs(caption = paste(  "PCA Plot:",cnts.names[i]) ))
 }
 
 ```
