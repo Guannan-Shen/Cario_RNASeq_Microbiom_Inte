@@ -1,0 +1,179 @@
+---
+title: "scatter_plot_clin_mRNA"
+author: "Guannan Shen"
+date: "July 30, 2019"
+output: 
+  html_document:
+    number_sections: yes
+    theme: united
+    toc: yes
+    toc_depth: 5
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '5'
+  pdf_document:
+    latex_engine: lualatex
+    number_sections: yes
+    toc: yes
+    toc_depth: 5
+---
+
+```{r setup, include=FALSE, cache = FALSE}
+require("knitr")
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+opts_chunk$set(engine = "R")
+knitr::opts_chunk$set(echo = T)
+knitr::opts_chunk$set(message = F)
+knitr::opts_chunk$set(warning = F)
+## setting wd in DELL
+## opts_knit$set(root.dir = "~/Stats/CIDA_OMICs/CIDA_OMICS/7659Stats_Genetics/HW5/")
+## setting working directory in asus 
+## opts_knit$set(root.dir = "C:/Users/hithr/Documents/Stats/gitlab/Cario_RNASeq_Microbiom_Inte/DataRaw/") 
+## setting working directory in ubuntu
+opts_knit$set(root.dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/")
+                                                 
+## cache = F, if cache = T, will not revaluate code chunk everytime
+## double or more space to insert a line break
+```
+
+
+```{r libs, warning=FALSE, echo=F}
+######################
+## Set up workspace
+######################
+rm(list = ls())
+require(tidyverse)
+options(stringsAsFactors = F)
+options(dplyr.width = Inf)
+getwd()
+## not in function
+'%nin%' <- Negate('%in%')
+
+# ######## clean memory ######################
+# rm(list = ls())
+# gc()
+# is(dds)
+# slotNames(dds)
+
+```
+
+## Import Data
+
+```{r data, echo=F}
+# regularized log transformed data
+# rlg
+isgs.05.lin <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/isgs.05.lin.csv", row.names = 1)
+dim(isgs.05.lin)
+genesbeta.05.lin <- read.csv("~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/corr/genesbeta.05.lin.csv", row.names = 1)
+dim(genesbeta.05.lin)
+
+# clinical data
+clinical_order <- read.csv("clinical_order.csv")
+clinical_names <- c("Blood CD4 T Cell Counts (cells/ul)", "Plasma Viral Load", 
+                    "Tissue HIV RNA (per CD4 T cell)",
+                    "Tissue CD4 T Cell Counts (number/g)", "IL-6 (pg/ml)", "CRP (ug/ml)", "iFABP (pg/ml)",
+                    "sCD27 (U/ml)", "CD14 (ng/ml)", "LPS (pg/ml)", "LTA (OD)", 
+                    base::paste("IFN", '\u03b1', sep = "" ),  base::paste("IFN", '\u03b2', sep = "" ),
+                    "Gut CD4 T cells (% viable CD45+ cells)")
+
+n_clinical <- length(clinical_names)
+colnames(clinical_order)
+clinical_order$Group
+sum(clinical_order$pid != rownames(isgs.05.lin))
+```
+
+```{r scatter}
+# requires the load of clinical_order
+clin_mRNA_scatter <- function(gene_symbol, clin_symbol, rlog_data, genelist_name, clin_name){
+  # y is the rlog gene, x is clin_symbol
+  df = data.frame(clinical_order , rlog_data)
+  x_clin = eval(call("$", df, clin_symbol))
+  y_gene = eval(call("$", df, gene_symbol))
+  dir = "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/plots/clin_mRNA/"
+  # plot 
+  p1 = ggplot2::ggplot(df, aes(x = x_clin, 
+                               y = y_gene )) +
+       geom_point(aes(color = Group), size = 2) +
+       geom_smooth(method = "lm", se = FALSE, colour = "black") +
+       theme_bw() +
+       labs(x = clin_name ,
+            y = paste(gene_symbol, "(Regularized log transformed)"),
+            caption = paste( "From",genelist_name) )           +
+       guides(color = guide_legend(title=NULL))  + 
+       scale_color_grey(breaks=c("control", "hiv"),
+                         labels=c("Uninfected\nsubjects", "HIV-1-infected\nsubjects"),
+                        start = 0.2, end = 0.6) +
+       theme(legend.text = element_text(colour="black", size = 10))
+  print(p1)
+  ggsave(filename = paste0(dir, clin_symbol, "_", gene_symbol, ".tiff"),
+           dpi = 300, compression = "lzw")
+}
+```
+
+```{r plots}
+# clinical parameters
+c("IFNb", "LPS", "CD4", "CD4_Counts", "IL.6")
+# Transcripts
+# vs IFNb
+c("CD38", "LAG3", "PSMB9", "GBP5", "IRF9", "NLRC5") %in% colnames(isgs.05.lin)
+c("TSG101", "EIF4H", "VIMP", "SMAD4") %in% colnames(genesbeta.05.lin)
+# vs LPS
+c("NLRC5", "TRIM56", "LAG3") %in% colnames(isgs.05.lin)
+# "SEP15"
+c("VIMP", "X15.Sep", "CSF1") %in% colnames(genesbeta.05.lin)
+# vs CD4
+c("PSMB9", "NLRC5", "IRF9", "LAG3", "STAT1", "GBP5") %in% colnames(isgs.05.lin)
+c("VIMP", "X15.Sep", "CUL5") %in% colnames(genesbeta.05.lin)
+# vs CD4_Counts
+c("CSF1", "MUS81", "NUP54", "TCEB1") %in% colnames(genesbeta.05.lin)
+# vs IL.6 "IL-6 (pg/ml)"
+c("VIMP", "PTPRN2", "NUP54", "MUS81") %in% colnames(genesbeta.05.lin)
+
+######### ifnb ###########
+for (i in c("CD38", "LAG3", "PSMB9", "GBP5", "IRF9", "NLRC5") ){
+clin_mRNA_scatter(i, "IFNb", isgs.05.lin, "Core-ISGs", paste0("IFN", '\u03b2'))
+}
+
+for (i in c("TSG101", "EIF4H", "VIMP", "SMAD4") ){
+clin_mRNA_scatter(i, "IFNb", genesbeta.05.lin , 
+                  paste0("IFN", '\u03b2',"-specific genes"), paste0("IFN", '\u03b2'))
+}
+
+########## lps ###########
+for (i in c("NLRC5", "TRIM56", "LAG3") ){
+clin_mRNA_scatter(i, "LPS", isgs.05.lin, "Core-ISGs", paste0("Plasma LPS (pg/ml)"))
+}
+
+for (i in c("VIMP", "X15.Sep", "CSF1") ){
+clin_mRNA_scatter(i, "LPS", genesbeta.05.lin , 
+                  paste0("IFN", '\u03b2',"-specific genes"), paste0("Plasma LPS (pg/ml)"))
+}
+
+########## CD4 #############
+for (i in c("PSMB9", "NLRC5", "IRF9", "LAG3", "STAT1", "GBP5") ){
+clin_mRNA_scatter(i, "CD4", isgs.05.lin, "Core-ISGs", 
+                  paste0("Gut CD4 T cells (% viable CD45+ cells)"))
+}
+
+for (i in c("VIMP", "X15.Sep", "CUL5") ){
+clin_mRNA_scatter(i, "CD4", genesbeta.05.lin , 
+                  paste0("IFN", '\u03b2',"-specific genes"), 
+                  paste0("Gut CD4 T cells (% viable CD45+ cells)"))
+}
+
+############## CD4_Counts ################## 
+for (i in c("CSF1", "MUS81", "NUP54", "TCEB1") ){
+clin_mRNA_scatter(i, "CD4_Counts", genesbeta.05.lin , 
+                  paste0("IFN", '\u03b2',"-specific genes"), 
+                  paste0("Blood CD4 T Cell Counts (cells/ul)"))
+}
+
+######### il-6 #############
+for (i in c("VIMP", "PTPRN2", "NUP54", "MUS81") ){
+clin_mRNA_scatter(i, "IL.6", genesbeta.05.lin , 
+                  paste0("IFN", '\u03b2',"-specific genes"), 
+                  paste0("Plasma IL-6 (pg/ml)"))
+}
+
+```
