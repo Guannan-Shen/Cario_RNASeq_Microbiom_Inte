@@ -305,14 +305,16 @@ sig_res <- as.data.frame(topTags(et, n = 30, adjust.method = "BH")[[1]])
 
 write.xlsx(sig_res,
            "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/interferome/treated/DE_results_treated.xlsx", sheetName="DE Results Treated")
+
+
 sig_res_format <- sig_res %>% data.frame() %>% rownames_to_column("Gene_ID")
 
 merge(sig_res_format,  isgs, by = "Gene_ID")
 merge(sig_res_format,  genesbeta, by = "Gene_ID")
 
-merge(sig_res_format, cnts_fsym[, c(1,2)], by = "Gene_ID") %>% 
-            dplyr::select(-Gene_ID) %>% dplyr::select( Symbol, everything())  %>% 
-                dplyr::arrange(PValue)  %>%   dplyr::mutate(Direction = ifelse(logFC > 0, 
+merge(sig_res_format, cnts_fsym[, c(1,2)], by = "Gene_ID") %>%
+            dplyr::select(-Gene_ID) %>% dplyr::select( Symbol, everything())  %>%
+                dplyr::arrange(PValue)  %>%   dplyr::mutate(Direction = ifelse(logFC > 0,
                                                                                "Up in HIV",
                                                                                "Down in HIV") ) %>%
                       kable
@@ -562,6 +564,20 @@ results %>% kable
 
 write.xlsx(results,
            "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Summary/Treated/DE_results_treated_02.xlsx", sheetName="DE Results Treated")
+
+####### save all #########
+# all results
+all_res<- as.data.frame(topTags(et, n = nrow(cnts_fsym), adjust.method = "BH")[[1]]) %>% 
+      data.frame() %>% rownames_to_column("Gene_ID")
+all_res_format <- merge(cnts_fsym[, 1:2], all_res, by = "Gene_ID")
+all_res_format %>% data.frame() %>%
+            dplyr::select(-Gene_ID) %>% dplyr::select( Symbol, everything())  %>%
+                dplyr::arrange(PValue)  %>%   dplyr::mutate(Direction = ifelse(logFC > 0,
+                                                                               "Up in HIV",
+                                                                               "Down in HIV") ) %>%
+  write.xlsx(.,
+           "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Summary/Treated/DE_results_treated_all.xlsx", sheetName="DE Results Treated")
+                
 
 ############### grouped scatter plot ###################
 par(mfrow = c(1,1))
