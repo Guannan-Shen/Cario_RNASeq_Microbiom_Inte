@@ -429,6 +429,9 @@ print( scater::plotPCA(example_sce, colour_by = "Group", size_by = "Group") + la
 
 ################## delete this one ####################
 cnts_f_f <- cnts_f_dele[, -3]
+#### get the stable ID #########
+ensem_ID <- rownames(cnts_f_f)
+
 dim(cnts_f_f)
 ctrl.id <-  colnames(cnts_f_f)[1:10]
 hiv.id <- colnames(cnts_f_f)[11:24]
@@ -555,7 +558,9 @@ write.xlsx(results.genesbeta,
            "~/Documents/gitlab/Cario_RNASeq_Microbiom_Inte/DataProcessed/Summary/Treated/DE_genesbeta_results_treated_02.xlsx", sheetName="DE Results Beta Treated")
 
 results <- merge(sig_res_format, cnts_fsym[, c(1,2)], by = "Gene_ID") %>% 
-            dplyr::select(-Gene_ID) %>% dplyr::select( Symbol, everything())  %>% 
+  ## keep the gene ID 
+           ##  dplyr::select(-Gene_ID) %>% 
+   dplyr::select( Symbol, everything())  %>% 
                 dplyr::arrange(PValue)  %>%   dplyr::mutate(Direction = ifelse(logFC > 0, 
                                                                                "Up in HIV",
                                                                                "Down in HIV") ) 
@@ -571,7 +576,9 @@ all_res<- as.data.frame(topTags(et, n = nrow(cnts_fsym), adjust.method = "BH")[[
       data.frame() %>% rownames_to_column("Gene_ID")
 all_res_format <- merge(cnts_fsym[, 1:2], all_res, by = "Gene_ID")
 all_res_format %>% data.frame() %>%
-            dplyr::select(-Gene_ID) %>% dplyr::select( Symbol, everything())  %>%
+  ####### Keep  Stable ID 
+        ##     dplyr::select(-Gene_ID) %>% 
+     dplyr::select( Symbol, everything())  %>%
                 dplyr::arrange(PValue)  %>%   dplyr::mutate(Direction = ifelse(logFC > 0,
                                                                                "Up in HIV",
                                                                                "Down in HIV") ) %>%
